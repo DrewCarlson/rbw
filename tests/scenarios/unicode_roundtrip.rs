@@ -25,10 +25,11 @@ fn unicode_name_username_password_notes_survive_roundtrip() {
     let password_val = "pässwörd‑123 🚀 الجزائر";
     let notes_body = "line one — naïve ✨\n二行目\nthird";
 
-    // Use the stdin-path on `rbw add`: first line = password, then a
-    // blank line, then notes. Username goes via `--username`.
+    // `rbw add <name> [user]` — username is a positional arg. First
+    // line of stdin is the password; a blank line separates password
+    // from notes body.
     let out = harness.run_with_stdin(
-        &["add", "--username", username, entry_name],
+        &["add", entry_name, username],
         format!("{password_val}\n\n{notes_body}\n").as_bytes(),
     );
     assert!(

@@ -3,6 +3,7 @@ use crate::prelude::*;
 use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
 
 pub fn make_all() -> Result<()> {
+    create_dir_all_with_permissions(&config_dir(), 0o700)?;
     create_dir_all_with_permissions(&cache_dir(), 0o700)?;
     create_dir_all_with_permissions(&runtime_dir(), 0o700)?;
     create_dir_all_with_permissions(&data_dir(), 0o700)?;

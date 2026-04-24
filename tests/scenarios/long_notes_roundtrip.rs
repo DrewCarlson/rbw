@@ -21,19 +21,23 @@ fn large_notes_survive_roundtrip() {
     let harness = RbwHarness::new(&server, email, password);
     harness.login_and_unlock();
 
-    // Vaultwarden caps the cipher `notes` field at 10 000 chars, so we
-    // stay just under that while still comfortably exceeding the
-    // `locked::FixedVec` 4 KiB password buffer and an AES block. 180
-    // numbered lines × ~48 chars ≈ 8.6 KiB — a truncation bug here
-    // surfaces as a missing `line 0179:` at the tail.
+    // Vaultwarden's 10 000-char `notes` cap applies to the *encrypted*
+    // stored value (base64 of ciphertext + envelope ≈ 1.37× plaintext
+    // + ~80 B). To exercise many AES blocks and cross the
+    // `locked::FixedVec` 4 KiB boundary while staying comfortably
+    // under the server cap, we aim for ~5 KiB plaintext (→ ≈ 7 KiB
+    // encoded). A truncation bug surfaces as a missing `line 0099:`
+    // at the tail.
     let mut notes = String::new();
-    for i in 0..180 {
+    for i in 0..100 {
         writeln!(notes, "line {i:04}: abcdefghijklmnopqrstuvwxyz0123456789")
             .unwrap();
     }
+    let ciphertext_budget = (notes.len() * 4 / 3) + 80;
     assert!(
-        notes.len() > 4 * 1024 && notes.len() < 10_000,
-        "test needs >4 KiB and <10 KiB of notes (vaultwarden cap), got {}",
+        notes.len() > 4 * 1024 && ciphertext_budget < 10_000,
+        "test needs >4 KiB plaintext and <10 KiB ciphertext (vaultwarden \
+         cap); plaintext={}, ~ciphertext={ciphertext_budget}",
         notes.len()
     );
 
@@ -57,7 +61,7 @@ fn large_notes_survive_roundtrip() {
         full.len()
     );
     assert!(
-        full.contains("line 0179:"),
+        full.contains("line 0099:"),
         "last notes line missing; got {} bytes (truncation somewhere?)",
         full.len()
     );
