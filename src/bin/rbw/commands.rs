@@ -1,6 +1,6 @@
 use std::{fmt::Write as _, io::Write as _, os::unix::ffi::OsStrExt as _};
 
-use anyhow::Context as _;
+use crate::bin_error::{self, ContextExt as _};
 
 // The default number of seconds the generated TOTP
 // code lasts for before a new one must be generated
@@ -113,7 +113,7 @@ enum Field {
 }
 
 impl std::str::FromStr for Field {
-    type Err = anyhow::Error;
+    type Err = crate::bin_error::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.to_lowercase().as_str() {
@@ -152,7 +152,7 @@ impl std::str::FromStr for Field {
             "first_name" => Self::FirstName,
             "middle_name" => Self::MiddleName,
             "last_name" => Self::LastName,
-            _ => anyhow::bail!("unknown field {s}"),
+            _ => crate::bin_error::bail!("unknown field {s}"),
         })
     }
 }
@@ -1020,7 +1020,7 @@ impl DecryptedCipher {
         }
     }
 
-    fn display_json(&self, desc: &str) -> anyhow::Result<()> {
+    fn display_json(&self, desc: &str) -> bin_error::Result<()> {
         serde_json::to_writer_pretty(std::io::stdout(), &self)
             .context(format!("failed to write entry '{desc}' to stdout"))?;
         println!();
@@ -1228,16 +1228,16 @@ impl ListField {
 }
 
 impl std::convert::TryFrom<&String> for ListField {
-    type Error = anyhow::Error;
+    type Error = crate::bin_error::Error;
 
-    fn try_from(s: &String) -> anyhow::Result<Self> {
+    fn try_from(s: &String) -> bin_error::Result<Self> {
         Ok(match s.as_str() {
             "name" => Self::Name,
             "id" => Self::Id,
             "user" => Self::User,
             "folder" => Self::Folder,
             "type" => Self::EntryType,
-            _ => return Err(anyhow::anyhow!("unknown field {s}")),
+            _ => return Err(crate::bin_error::err!("unknown field {s}")),
         })
     }
 }
@@ -1253,7 +1253,7 @@ const HELP_NOTES: &str = r"
 # Lines with leading # will be ignored.
 ";
 
-pub fn config_show() -> anyhow::Result<()> {
+pub fn config_show() -> bin_error::Result<()> {
     let config = rbw::config::Config::load()?;
     serde_json::to_writer_pretty(std::io::stdout(), &config)
         .context("failed to write config to stdout")?;
@@ -1262,7 +1262,7 @@ pub fn config_show() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn config_set(key: &str, value: &str) -> anyhow::Result<()> {
+pub fn config_set(key: &str, value: &str) -> bin_error::Result<()> {
     let mut config = rbw::config::Config::load()
         .unwrap_or_else(|_| rbw::config::Config::new());
     match key {
@@ -1295,7 +1295,7 @@ pub fn config_set(key: &str, value: &str) -> anyhow::Result<()> {
             config.sync_interval = interval;
         }
         "pinentry" => config.pinentry = value.to_string(),
-        _ => return Err(anyhow::anyhow!("invalid config key: {key}")),
+        _ => return Err(crate::bin_error::err!("invalid config key: {key}")),
     }
     config.save()?;
 
@@ -1309,7 +1309,7 @@ pub fn config_set(key: &str, value: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn config_unset(key: &str) -> anyhow::Result<()> {
+pub fn config_unset(key: &str) -> bin_error::Result<()> {
     let mut config = rbw::config::Config::load()
         .unwrap_or_else(|_| rbw::config::Config::new());
     match key {
@@ -1324,7 +1324,7 @@ pub fn config_unset(key: &str) -> anyhow::Result<()> {
             config.lock_timeout = rbw::config::default_lock_timeout();
         }
         "pinentry" => config.pinentry = rbw::config::default_pinentry(),
-        _ => return Err(anyhow::anyhow!("invalid config key: {key}")),
+        _ => return Err(crate::bin_error::err!("invalid config key: {key}")),
     }
     config.save()?;
 
@@ -1338,28 +1338,28 @@ pub fn config_unset(key: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn clipboard_store(val: &str) -> anyhow::Result<()> {
+fn clipboard_store(val: &str) -> bin_error::Result<()> {
     ensure_agent()?;
     crate::actions::clipboard_store(val)?;
 
     Ok(())
 }
 
-pub fn register() -> anyhow::Result<()> {
+pub fn register() -> bin_error::Result<()> {
     ensure_agent()?;
     crate::actions::register()?;
 
     Ok(())
 }
 
-pub fn login() -> anyhow::Result<()> {
+pub fn login() -> bin_error::Result<()> {
     ensure_agent()?;
     crate::actions::login()?;
 
     Ok(())
 }
 
-pub fn unlock() -> anyhow::Result<()> {
+pub fn unlock() -> bin_error::Result<()> {
     ensure_agent()?;
     crate::actions::login()?;
     crate::actions::unlock()?;
@@ -1367,7 +1367,7 @@ pub fn unlock() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn unlocked() -> anyhow::Result<()> {
+pub fn unlocked() -> bin_error::Result<()> {
     // not ensure_agent, because we don't want `rbw unlocked` to start the
     // agent if it's not running
     let _ = check_agent_version();
@@ -1376,7 +1376,7 @@ pub fn unlocked() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn sync() -> anyhow::Result<()> {
+pub fn sync() -> bin_error::Result<()> {
     ensure_agent()?;
     crate::actions::login()?;
     crate::actions::sync()?;
@@ -1384,14 +1384,14 @@ pub fn sync() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn list(fields: &[String], raw: bool) -> anyhow::Result<()> {
+pub fn list(fields: &[String], raw: bool) -> bin_error::Result<()> {
     let fields: Vec<ListField> = if raw {
         ListField::all()
     } else {
         fields
             .iter()
             .map(std::convert::TryFrom::try_from)
-            .collect::<anyhow::Result<_>>()?
+            .collect::<bin_error::Result<_>>()?
     };
 
     unlock()?;
@@ -1401,7 +1401,7 @@ pub fn list(fields: &[String], raw: bool) -> anyhow::Result<()> {
         .entries
         .iter()
         .map(|entry| decrypt_list_cipher(entry, &fields))
-        .collect::<anyhow::Result<_>>()?;
+        .collect::<bin_error::Result<_>>()?;
     entries.sort_unstable_by(|a, b| a.name.cmp(&b.name));
 
     print_entry_list(&entries, &fields, raw)?;
@@ -1420,7 +1420,7 @@ pub fn get(
     clipboard: bool,
     ignore_case: bool,
     list_fields: bool,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     unlock()?;
 
     let db = load_db()?;
@@ -1453,7 +1453,7 @@ fn print_entry_list(
     entries: &[DecryptedListCipher],
     fields: &[ListField],
     raw: bool,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     if raw {
         serde_json::to_writer_pretty(std::io::stdout(), &entries)
             .context("failed to write entries to stdout".to_string())?;
@@ -1512,14 +1512,14 @@ pub fn search(
     fields: &[String],
     folder: Option<&str>,
     raw: bool,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     let fields: Vec<ListField> = if raw {
         ListField::all()
     } else {
         fields
             .iter()
             .map(std::convert::TryFrom::try_from)
-            .collect::<anyhow::Result<_>>()?
+            .collect::<bin_error::Result<_>>()?
     };
 
     unlock()?;
@@ -1537,7 +1537,7 @@ pub fn search(
                 .unwrap_or(true)
         })
         .map(|entry| entry.map(std::convert::Into::into))
-        .collect::<Result<_, anyhow::Error>>()?;
+        .collect::<Result<_, crate::bin_error::Error>>()?;
     entries.sort_unstable_by(|a, b| a.name.cmp(&b.name));
 
     print_entry_list(&entries, &fields, raw)?;
@@ -1551,7 +1551,7 @@ pub fn code(
     folder: Option<&str>,
     clipboard: bool,
     ignore_case: bool,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     unlock()?;
 
     let db = load_db()?;
@@ -1570,12 +1570,12 @@ pub fn code(
         if let Some(totp) = totp {
             val_display_or_store(clipboard, &generate_totp(&totp)?);
         } else {
-            return Err(anyhow::anyhow!(
+            return Err(crate::bin_error::err!(
                 "entry does not contain a totp secret"
             ));
         }
     } else {
-        return Err(anyhow::anyhow!("not a login entry"));
+        return Err(crate::bin_error::err!("not a login entry"));
     }
 
     Ok(())
@@ -1586,7 +1586,7 @@ pub fn add(
     username: Option<&str>,
     uris: &[(String, Option<rbw::api::UriMatchType>)],
     folder: Option<&str>,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     unlock()?;
 
     let mut db = load_db()?;
@@ -1618,7 +1618,7 @@ pub fn add(
                 match_type: uri.1,
             })
         })
-        .collect::<anyhow::Result<_>>()?;
+        .collect::<bin_error::Result<_>>()?;
 
     let mut folder_id = None;
     if let Some(folder_name) = folder {
@@ -1636,7 +1636,7 @@ pub fn add(
             .map(|(id, name)| {
                 Ok((id, crate::actions::decrypt(&name, None, None)?))
             })
-            .collect::<anyhow::Result<_>>()?;
+            .collect::<bin_error::Result<_>>()?;
 
         for (id, name) in folders {
             if name == folder_name {
@@ -1687,7 +1687,7 @@ pub fn generate(
     folder: Option<&str>,
     len: usize,
     ty: rbw::pwgen::Type,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     let password = rbw::pwgen::pwgen(ty, len);
     println!("{password}");
 
@@ -1713,7 +1713,7 @@ pub fn generate(
                     match_type: uri.1,
                 })
             })
-            .collect::<anyhow::Result<_>>()?;
+            .collect::<bin_error::Result<_>>()?;
 
         let mut folder_id = None;
         if let Some(folder_name) = folder {
@@ -1731,7 +1731,7 @@ pub fn generate(
                 .map(|(id, name)| {
                     Ok((id, crate::actions::decrypt(&name, None, None)?))
                 })
-                .collect::<anyhow::Result<_>>()?;
+                .collect::<bin_error::Result<_>>()?;
 
             for (id, name) in folders {
                 if name == folder_name {
@@ -1781,7 +1781,7 @@ pub fn edit(
     username: Option<&str>,
     folder: Option<&str>,
     ignore_case: bool,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     unlock()?;
 
     let mut db = load_db()?;
@@ -1872,7 +1872,7 @@ pub fn edit(
             (data, entry.fields, notes, entry.history)
         }
         _ => {
-            return Err(anyhow::anyhow!(
+            return Err(crate::bin_error::err!(
                 "modifications are only supported for login and note entries"
             ));
         }
@@ -1903,7 +1903,7 @@ pub fn remove(
     username: Option<&str>,
     folder: Option<&str>,
     ignore_case: bool,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     unlock()?;
 
     let mut db = load_db()?;
@@ -1936,7 +1936,7 @@ pub fn history(
     username: Option<&str>,
     folder: Option<&str>,
     ignore_case: bool,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     unlock()?;
 
     let db = load_db()?;
@@ -1956,14 +1956,14 @@ pub fn history(
     Ok(())
 }
 
-pub fn lock() -> anyhow::Result<()> {
+pub fn lock() -> bin_error::Result<()> {
     ensure_agent()?;
     crate::actions::lock()?;
 
     Ok(())
 }
 
-pub fn purge() -> anyhow::Result<()> {
+pub fn purge() -> bin_error::Result<()> {
     stop_agent()?;
 
     remove_db()?;
@@ -1971,13 +1971,13 @@ pub fn purge() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn stop_agent() -> anyhow::Result<()> {
+pub fn stop_agent() -> bin_error::Result<()> {
     crate::actions::quit()?;
 
     Ok(())
 }
 
-fn ensure_agent() -> anyhow::Result<()> {
+fn ensure_agent() -> bin_error::Result<()> {
     check_config()?;
     if matches!(check_agent_version(), Ok(())) {
         return Ok(());
@@ -1987,7 +1987,7 @@ fn ensure_agent() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_agent() -> anyhow::Result<()> {
+fn run_agent() -> bin_error::Result<()> {
     let agent_path = std::env::var_os("RBW_AGENT");
     let agent_path = agent_path
         .as_deref()
@@ -1998,7 +1998,7 @@ fn run_agent() -> anyhow::Result<()> {
     if !status.success() {
         if let Some(code) = status.code() {
             if code != 23 {
-                return Err(anyhow::anyhow!(
+                return Err(crate::bin_error::err!(
                     "failed to run rbw-agent: {status}"
                 ));
             }
@@ -2008,26 +2008,26 @@ fn run_agent() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn check_config() -> anyhow::Result<()> {
+fn check_config() -> bin_error::Result<()> {
     rbw::config::Config::validate().map_err(|e| {
         log::error!("{MISSING_CONFIG_HELP}");
-        anyhow::Error::new(e)
+        crate::bin_error::Error::new(e)
     })
 }
 
-fn check_agent_version() -> anyhow::Result<()> {
+fn check_agent_version() -> bin_error::Result<()> {
     let client_version = rbw::protocol::VERSION;
     let agent_version = version_or_quit()?;
     if agent_version != client_version {
         crate::actions::quit()?;
-        return Err(anyhow::anyhow!(
+        return Err(crate::bin_error::err!(
             "client protocol version is {client_version} but agent protocol version is {agent_version}"
         ));
     }
     Ok(())
 }
 
-fn version_or_quit() -> anyhow::Result<u32> {
+fn version_or_quit() -> bin_error::Result<u32> {
     crate::actions::version().inspect_err(|_| {
         let _ = crate::actions::quit();
     })
@@ -2039,7 +2039,7 @@ fn find_entry(
     username: Option<&str>,
     folder: Option<&str>,
     ignore_case: bool,
-) -> anyhow::Result<(rbw::db::Entry, DecryptedCipher)> {
+) -> bin_error::Result<(rbw::db::Entry, DecryptedCipher)> {
     if let Needle::Uuid(uuid, s) = needle {
         for cipher in &db.entries {
             if uuid::Uuid::parse_str(&cipher.id) == Ok(uuid) {
@@ -2056,7 +2056,7 @@ fn find_entry(
             decrypt_search_cipher(entry)
                 .map(|decrypted| (entry.clone(), decrypted))
         })
-        .collect::<anyhow::Result<_>>()?;
+        .collect::<bin_error::Result<_>>()?;
     let (entry, _) =
         find_entry_raw(&ciphers, &needle, username, folder, ignore_case)?;
     let decrypted_entry = decrypt_cipher(&entry)?;
@@ -2069,7 +2069,7 @@ fn find_entry_raw(
     username: Option<&str>,
     folder: Option<&str>,
     ignore_case: bool,
-) -> anyhow::Result<(rbw::db::Entry, DecryptedSearchCipher)> {
+) -> bin_error::Result<(rbw::db::Entry, DecryptedSearchCipher)> {
     let mut matches: Vec<(rbw::db::Entry, DecryptedSearchCipher)> = vec![];
 
     let find_matches = |strict_username, strict_folder, exact| {
@@ -2115,14 +2115,14 @@ fn find_entry_raw(
     }
 
     if matches.is_empty() {
-        Err(anyhow::anyhow!("no entry found"))
+        Err(crate::bin_error::err!("no entry found"))
     } else {
         let entries: Vec<String> = matches
             .iter()
             .map(|(_, decrypted)| decrypted.display_name())
             .collect();
         let entries = entries.join(", ");
-        Err(anyhow::anyhow!("multiple entries found: {entries}"))
+        Err(crate::bin_error::err!("multiple entries found: {entries}"))
     }
 }
 
@@ -2148,7 +2148,7 @@ fn decrypt_field(
 fn decrypt_list_cipher(
     entry: &rbw::db::Entry,
     fields: &[ListField],
-) -> anyhow::Result<DecryptedListCipher> {
+) -> bin_error::Result<DecryptedListCipher> {
     let id = entry.id.clone();
     let name = if fields.contains(&ListField::Name) {
         Some(crate::actions::decrypt(
@@ -2225,7 +2225,7 @@ fn decrypt_list_cipher(
 
 fn decrypt_search_cipher(
     entry: &rbw::db::Entry,
-) -> anyhow::Result<DecryptedSearchCipher> {
+) -> bin_error::Result<DecryptedSearchCipher> {
     let id = entry.id.clone();
     let name = crate::actions::decrypt(
         &entry.name,
@@ -2291,7 +2291,7 @@ fn decrypt_search_cipher(
                 entry.org_id.as_deref(),
             )
         })
-        .collect::<anyhow::Result<_>>()?;
+        .collect::<bin_error::Result<_>>()?;
     let notes = match notes {
         Ok(notes) => notes,
         Err(e) => {
@@ -2320,7 +2320,7 @@ fn decrypt_search_cipher(
     })
 }
 
-fn decrypt_cipher(entry: &rbw::db::Entry) -> anyhow::Result<DecryptedCipher> {
+fn decrypt_cipher(entry: &rbw::db::Entry) -> bin_error::Result<DecryptedCipher> {
     // folder name should always be decrypted with the local key because
     // folders are local to a specific user's vault, not the organization
     let folder = entry
@@ -2365,7 +2365,7 @@ fn decrypt_cipher(entry: &rbw::db::Entry) -> anyhow::Result<DecryptedCipher> {
                 ty: field.ty,
             })
         })
-        .collect::<anyhow::Result<_>>()?;
+        .collect::<bin_error::Result<_>>()?;
     let notes = entry
         .notes
         .as_ref()
@@ -2397,7 +2397,7 @@ fn decrypt_cipher(entry: &rbw::db::Entry) -> anyhow::Result<DecryptedCipher> {
                 )?,
             })
         })
-        .collect::<anyhow::Result<_>>()?;
+        .collect::<bin_error::Result<_>>()?;
 
     let data = match &entry.data {
         rbw::db::EntryData::Login {
@@ -2670,35 +2670,35 @@ fn parse_editor(contents: &str) -> (Option<String>, Option<String>) {
     (password, notes)
 }
 
-fn load_db() -> anyhow::Result<rbw::db::Db> {
+fn load_db() -> bin_error::Result<rbw::db::Db> {
     let config = rbw::config::Config::load()?;
     config.email.as_ref().map_or_else(
-        || Err(anyhow::anyhow!("failed to find email address in config")),
+        || Err(crate::bin_error::err!("failed to find email address in config")),
         |email| {
             rbw::db::Db::load(&config.server_name(), email)
-                .map_err(anyhow::Error::new)
+                .map_err(crate::bin_error::Error::new)
         },
     )
 }
 
-fn save_db(db: &rbw::db::Db) -> anyhow::Result<()> {
+fn save_db(db: &rbw::db::Db) -> bin_error::Result<()> {
     let config = rbw::config::Config::load()?;
     config.email.as_ref().map_or_else(
-        || Err(anyhow::anyhow!("failed to find email address in config")),
+        || Err(crate::bin_error::err!("failed to find email address in config")),
         |email| {
             db.save(&config.server_name(), email)
-                .map_err(anyhow::Error::new)
+                .map_err(crate::bin_error::Error::new)
         },
     )
 }
 
-fn remove_db() -> anyhow::Result<()> {
+fn remove_db() -> bin_error::Result<()> {
     let config = rbw::config::Config::load()?;
     config.email.as_ref().map_or_else(
-        || Err(anyhow::anyhow!("failed to find email address in config")),
+        || Err(crate::bin_error::err!("failed to find email address in config")),
         |email| {
             rbw::db::Db::remove(&config.server_name(), email)
-                .map_err(anyhow::Error::new)
+                .map_err(crate::bin_error::Error::new)
         },
     )
 }
@@ -2710,28 +2710,17 @@ struct TotpParams {
     period: u64,
 }
 
-fn decode_totp_secret(secret: &str) -> anyhow::Result<Vec<u8>> {
-    let secret = secret.trim().replace(' ', "");
-    let alphabets = [
-        base32::Alphabet::Rfc4648 { padding: false },
-        base32::Alphabet::Rfc4648 { padding: true },
-        base32::Alphabet::Rfc4648Lower { padding: false },
-        base32::Alphabet::Rfc4648Lower { padding: true },
-    ];
-    for alphabet in alphabets {
-        if let Some(secret) = base32::decode(alphabet, &secret) {
-            return Ok(secret);
-        }
-    }
-    Err(anyhow::anyhow!("totp secret was not valid base32"))
+fn decode_totp_secret(secret: &str) -> bin_error::Result<Vec<u8>> {
+    rbw::totp::decode_base32(secret)
+        .ok_or_else(|| crate::bin_error::err!("totp secret was not valid base32"))
 }
 
-fn parse_totp_secret(secret: &str) -> anyhow::Result<TotpParams> {
+fn parse_totp_secret(secret: &str) -> bin_error::Result<TotpParams> {
     if let Ok(u) = url::Url::parse(secret) {
         match u.scheme() {
             "otpauth" => {
                 if u.host_str() != Some("totp") {
-                    return Err(anyhow::anyhow!(
+                    return Err(crate::bin_error::err!(
                         "totp secret url must have totp host"
                     ));
                 }
@@ -2741,7 +2730,7 @@ fn parse_totp_secret(secret: &str) -> anyhow::Result<TotpParams> {
 
                 let secret = decode_totp_secret(
                     query.get("secret").ok_or_else(|| {
-                        anyhow::anyhow!("totp secret url must have secret")
+                        crate::bin_error::err!("totp secret url must have secret")
                     })?,
                 )?;
                 let algorithm = query.get("algorithm").map_or_else(
@@ -2751,12 +2740,12 @@ fn parse_totp_secret(secret: &str) -> anyhow::Result<TotpParams> {
                 let digits = match query.get("digits") {
                     Some(dig) => dig
                         .parse::<usize>()
-                        .map_err(|_| anyhow::anyhow!("digits parameter in totp url must be a valid integer."))?,
+                        .map_err(|_| crate::bin_error::err!("digits parameter in totp url must be a valid integer."))?,
                     None => 6,
                 };
                 let period = match query.get("period") {
                     Some(dig) => {
-                        dig.parse::<u64>().map_err(|_| anyhow::anyhow!("period parameter in totp url must be a valid integer."))?
+                        dig.parse::<u64>().map_err(|_| crate::bin_error::err!("period parameter in totp url must be a valid integer."))?
                     }
                     None => TOTP_DEFAULT_STEP,
                 };
@@ -2778,7 +2767,7 @@ fn parse_totp_secret(secret: &str) -> anyhow::Result<TotpParams> {
                     period: TOTP_DEFAULT_STEP,
                 })
             }
-            _ => Err(anyhow::anyhow!(
+            _ => Err(crate::bin_error::err!(
                 "totp secret url must have 'otpauth' or 'steam' scheme"
             )),
         }
@@ -2792,39 +2781,31 @@ fn parse_totp_secret(secret: &str) -> anyhow::Result<TotpParams> {
     }
 }
 
-// This function exists for the sake of making the generate_totp function less
-// densely packed and more readable
-fn generate_totp_algorithm_type(
-    alg: &str,
-) -> anyhow::Result<totp_rs::Algorithm> {
-    match alg {
-        "SHA1" => Ok(totp_rs::Algorithm::SHA1),
-        "SHA256" => Ok(totp_rs::Algorithm::SHA256),
-        "SHA512" => Ok(totp_rs::Algorithm::SHA512),
-        "STEAM" => Ok(totp_rs::Algorithm::Steam),
-        _ => Err(anyhow::anyhow!(format!("{alg} is not a valid algorithm"))),
-    }
-}
-
-fn generate_totp(secret: &str) -> anyhow::Result<String> {
+fn generate_totp(secret: &str) -> bin_error::Result<String> {
     let totp_params = parse_totp_secret(secret)?;
-    let alg = totp_params.algorithm.as_str();
-
-    match alg {
-        "SHA1" | "SHA256" | "SHA512" => Ok(totp_rs::TOTP::new_unchecked(
-            generate_totp_algorithm_type(alg)?,
-            totp_params.digits,
-            1, // the library docs say this should be a 1
-            totp_params.period,
-            totp_params.secret,
-        )
-        .generate_current()?),
-        "STEAM" => Ok(totp_rs::TOTP::new_steam(totp_params.secret)
-            .generate_current()?),
-        _ => Err(anyhow::anyhow!(format!(
-            "{alg} is not a valid totp algorithm"
-        ))),
-    }
+    let algorithm = match totp_params.algorithm.as_str() {
+        "SHA1" => rbw::totp::Algorithm::Sha1,
+        "SHA256" => rbw::totp::Algorithm::Sha256,
+        "SHA512" => rbw::totp::Algorithm::Sha512,
+        "STEAM" => rbw::totp::Algorithm::Steam,
+        other => {
+            return Err(crate::bin_error::err!("{other} is not a valid totp algorithm"));
+        }
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| crate::bin_error::err!("system time error: {e}"))?
+        .as_secs();
+    let digits = u32::try_from(totp_params.digits)
+        .map_err(|_| crate::bin_error::err!("digits value out of range"))?;
+    rbw::totp::generate(
+        &totp_params.secret,
+        now,
+        totp_params.period,
+        digits,
+        &algorithm,
+    )
+    .map_err(bin_error::Error::new)
 }
 
 fn display_field(name: &str, field: Option<&str>, clipboard: bool) -> bool {

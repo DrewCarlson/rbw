@@ -1,33 +1,57 @@
 use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt as _;
+use std::os::unix::io::{AsFd as _, OwnedFd};
 
-use anyhow::Context as _;
+use crate::bin_error::{self, ContextExt as _};
 
 pub struct StartupAck {
-    writer: std::os::unix::io::OwnedFd,
+    writer: OwnedFd,
 }
 
 impl StartupAck {
-    pub fn ack(self) -> anyhow::Result<()> {
+    pub fn ack(self) -> bin_error::Result<()> {
         rustix::io::write(&self.writer, &[0])?;
         Ok(())
     }
 }
 
-pub fn daemonize(no_daemonize: bool) -> anyhow::Result<Option<StartupAck>> {
+fn open_and_lock_pidfile() -> bin_error::Result<std::fs::File> {
+    let pidfile = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o666)
+        .open(rbw::dirs::pid_file())
+        .context("failed to open pid file")?;
+    rustix::fs::flock(
+        &pidfile,
+        rustix::fs::FlockOperation::NonBlockingLockExclusive,
+    )
+    .context("failed to lock pid file")?;
+    Ok(pidfile)
+}
+
+fn redirect_fd_to<Fd: std::os::unix::io::AsFd>(
+    src: Fd,
+    target_raw: std::os::unix::io::RawFd,
+) -> bin_error::Result<()> {
+    // SAFETY: we are reconstructing an OwnedFd from a well-known standard fd
+    // (0/1/2) purely so that `dup2` can overwrite it; we then forget it to
+    // avoid closing the fd we just installed.
+    let mut target = unsafe {
+        <OwnedFd as std::os::unix::io::FromRawFd>::from_raw_fd(target_raw)
+    };
+    let res = rustix::io::dup2(src, &mut target);
+    std::mem::forget(target);
+    res.context("failed to dup2")?;
+    Ok(())
+}
+
+pub fn daemonize(
+    no_daemonize: bool,
+) -> bin_error::Result<Option<StartupAck>> {
     if no_daemonize {
-        let mut pidfile = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o666)
-            .open(rbw::dirs::pid_file())
-            .context("failed to open pid file")?;
-        rustix::fs::flock(
-            &pidfile,
-            rustix::fs::FlockOperation::NonBlockingLockExclusive,
-        )
-        .context("failed to lock pid file")?;
+        let mut pidfile = open_and_lock_pidfile()?;
         writeln!(pidfile, "{}", std::process::id())
             .context("failed to write pid file")?;
         // don't close the pidfile until the process exits, to ensure it
@@ -37,6 +61,34 @@ pub fn daemonize(no_daemonize: bool) -> anyhow::Result<Option<StartupAck>> {
         return Ok(None);
     }
 
+    // Lock the pidfile in the original (pre-fork) process so that the
+    // "already running" condition is visible to the user-facing parent via
+    // its exit code, instead of only being observable in the detached
+    // grandchild.
+    let pidfile = match open_and_lock_pidfile() {
+        Ok(f) => f,
+        Err(e) => {
+            let mut cur: Option<&(dyn std::error::Error + 'static)> =
+                std::error::Error::source(&e);
+            let mut found: Option<rustix::io::Errno> = None;
+            while let Some(c) = cur {
+                if let Some(errno) = c.downcast_ref::<rustix::io::Errno>() {
+                    found = Some(*errno);
+                    break;
+                }
+                cur = c.source();
+            }
+            if let Some(errno) = found {
+                if errno == rustix::io::Errno::WOULDBLOCK
+                    || errno == rustix::io::Errno::AGAIN
+                {
+                    std::process::exit(23);
+                }
+            }
+            return Err(e);
+        }
+    };
+
     let stdout = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
@@ -45,42 +97,71 @@ pub fn daemonize(no_daemonize: bool) -> anyhow::Result<Option<StartupAck>> {
         .append(true)
         .create(true)
         .open(rbw::dirs::agent_stderr_file())?;
+    let devnull_in = rustix::fs::open(
+        "/dev/null",
+        rustix::fs::OFlags::RDONLY,
+        rustix::fs::Mode::empty(),
+    )
+    .context("failed to open /dev/null")?;
 
     let (r, w) = rustix::pipe::pipe()?;
-    let daemonize = daemonize::Daemonize::new()
-        .pid_file(rbw::dirs::pid_file())
-        .stdout(stdout)
-        .stderr(stderr);
-    let res = match daemonize.execute() {
-        daemonize::Outcome::Parent(_) => {
-            drop(w);
-            let mut buf = [0; 1];
-            // unwraps are necessary because not really a good way to handle
-            // errors here otherwise
-            rustix::io::read(&r, &mut buf).unwrap();
-            drop(r);
-            std::process::exit(0);
-        }
-        daemonize::Outcome::Child(res) => res,
-    };
 
-    drop(r);
-
-    match res {
-        Ok(_) => (),
-        Err(e) => {
-            // XXX super gross, but daemonize removed the ability to match
-            // on specific error types for some reason?
-            if e.to_string().contains("unable to lock pid file") {
-                // this means that there is already an agent running, so
-                // return a special exit code to allow the cli to detect
-                // this case and not error out
-                std::process::exit(23);
-            } else {
-                panic!("failed to daemonize: {e}");
-            }
+    // SAFETY: fork is called before any tokio runtime or other threads are
+    // started (see real_main in main.rs). The parent returns without
+    // touching global state beyond reading the pipe and exiting; the
+    // children only call async-signal-safe rustix/libc wrappers plus
+    // std::fs open/write before the final return into tokio.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        return Err(std::io::Error::last_os_error())
+            .context("first fork failed");
+    }
+    if pid > 0 {
+        // original parent: wait for ack from grandchild, then exit
+        drop(w);
+        let mut buf = [0u8; 1];
+        match rustix::io::read(&r, &mut buf) {
+            Ok(1) => std::process::exit(0),
+            // EOF before ack means the daemon child died without signaling
+            // success; propagate a generic failure exit code.
+            _ => std::process::exit(1),
         }
     }
+
+    // first child (session leader candidate)
+    drop(r);
+    rustix::process::setsid().context("setsid failed")?;
+
+    // SAFETY: same invariants as the first fork; no runtime has been
+    // started in this process.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        return Err(std::io::Error::last_os_error())
+            .context("second fork failed");
+    }
+    if pid > 0 {
+        // intermediate exits immediately so the grandchild is reparented
+        // to init and cannot reacquire a controlling terminal.
+        // SAFETY: _exit is async-signal-safe and avoids running atexit
+        // handlers inherited from the parent.
+        unsafe { libc::_exit(0) };
+    }
+
+    // grandchild: finalize daemon state
+    rustix::process::chdir("/").context("chdir / failed")?;
+
+    redirect_fd_to(devnull_in.as_fd(), libc::STDIN_FILENO)?;
+    redirect_fd_to(stdout.as_fd(), libc::STDOUT_FILENO)?;
+    redirect_fd_to(stderr.as_fd(), libc::STDERR_FILENO)?;
+    drop(devnull_in);
+    drop(stdout);
+    drop(stderr);
+
+    writeln!(&pidfile, "{}", std::process::id())
+        .context("failed to write pid file")?;
+    // keep the pidfile fd open for the life of the process so the advisory
+    // lock is held until exit
+    std::mem::forget(pidfile);
 
     Ok(Some(StartupAck { writer: w }))
 }

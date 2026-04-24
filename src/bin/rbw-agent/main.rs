@@ -1,7 +1,8 @@
-use anyhow::Context as _;
+use crate::bin_error::ContextExt as _;
 
 mod actions;
 mod agent;
+mod bin_error;
 mod daemon;
 mod debugger;
 mod notifications;
@@ -12,7 +13,7 @@ mod timeout;
 
 async fn tokio_main(
     startup_ack: Option<crate::daemon::StartupAck>,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     let listener = crate::sock::listen()?;
 
     if let Some(startup_ack) = startup_ack {
@@ -60,11 +61,8 @@ async fn tokio_main(
     Ok(())
 }
 
-fn real_main() -> anyhow::Result<()> {
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info"),
-    )
-    .init();
+fn real_main() -> bin_error::Result<()> {
+    rbw::logger::init("info");
 
     let no_daemonize = std::env::args()
         .nth(1)

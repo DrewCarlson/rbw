@@ -1,9 +1,8 @@
-use std::io::Write as _;
-
-use anyhow::Context as _;
+use crate::bin_error::ContextExt as _;
 use clap::{CommandFactory as _, Parser as _};
 
 mod actions;
+mod bin_error;
 mod commands;
 mod sock;
 
@@ -308,13 +307,7 @@ impl Config {
 fn main() {
     let opt = Opt::parse();
 
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info"),
-    )
-    .format(|buf, record| {
-        writeln!(buf, "{}: {}", record.level(), record.args())
-    })
-    .init();
+    rbw::logger::init("info");
 
     let subcommand_name = opt.subcommand_name();
     let res = match opt {

@@ -1120,22 +1120,25 @@ impl Client {
         let callback_url =
             "http://localhost:".to_string() + port.to_string().as_str();
 
-        open::that(
-            self.ui_url.clone()
-                + "/#/sso?clientId="
-                + "cli"
-                + "&redirectUri="
-                + urlencoding::encode(callback_url.as_str())
-                    .into_owned()
-                    .as_str()
-                + "&state="
-                + state.as_str()
-                + "&codeChallenge="
-                + code_challenge.as_str()
-                + "&identifier="
-                + sso_id,
-        )
-        .map_err(|e| Error::FailedToOpenWebBrowser { err: e })?;
+        let url = self.ui_url.clone()
+            + "/#/sso?clientId="
+            + "cli"
+            + "&redirectUri="
+            + urlencoding::encode(callback_url.as_str())
+                .into_owned()
+                .as_str()
+            + "&state="
+            + state.as_str()
+            + "&codeChallenge="
+            + code_challenge.as_str()
+            + "&identifier="
+            + sso_id;
+
+        #[cfg(feature = "sso-browser")]
+        open::that(&url)
+            .map_err(|e| Error::FailedToOpenWebBrowser { err: e })?;
+        #[cfg(not(feature = "sso-browser"))]
+        eprintln!("Open this URL to continue: {url}");
         // TODO: probably it'd be better to display the URL in the console if the automatic
         // open operation fails, instead of failing the whole process? E.g. docker container
         // case

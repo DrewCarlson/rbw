@@ -1,20 +1,20 @@
 use std::{io::Read as _, os::unix::ffi::OsStringExt as _};
 
-use anyhow::Context as _;
+use crate::bin_error::{self, ContextExt as _};
 
-pub fn register() -> anyhow::Result<()> {
+pub fn register() -> bin_error::Result<()> {
     simple_action(rbw::protocol::Action::Register)
 }
 
-pub fn login() -> anyhow::Result<()> {
+pub fn login() -> bin_error::Result<()> {
     simple_action(rbw::protocol::Action::Login)
 }
 
-pub fn unlock() -> anyhow::Result<()> {
+pub fn unlock() -> bin_error::Result<()> {
     simple_action(rbw::protocol::Action::Unlock)
 }
 
-pub fn unlocked() -> anyhow::Result<()> {
+pub fn unlocked() -> bin_error::Result<()> {
     match crate::sock::Sock::connect() {
         Ok(mut sock) => {
             sock.send(&rbw::protocol::Request::new(
@@ -26,9 +26,9 @@ pub fn unlocked() -> anyhow::Result<()> {
             match res {
                 rbw::protocol::Response::Ack => Ok(()),
                 rbw::protocol::Response::Error { error } => {
-                    Err(anyhow::anyhow!("{error}"))
+                    Err(bin_error::Error::msg(format!("{error}")))
                 }
-                _ => Err(anyhow::anyhow!("unexpected message: {res:?}")),
+                _ => Err(bin_error::Error::msg(format!("unexpected message: {res:?}"))),
             }
         }
         Err(e) => {
@@ -37,22 +37,22 @@ pub fn unlocked() -> anyhow::Result<()> {
                 std::io::ErrorKind::ConnectionRefused
                     | std::io::ErrorKind::NotFound
             ) {
-                anyhow::bail!("agent not running");
+                return Err(bin_error::Error::msg(format!("agent not running")));
             }
             Err(e.into())
         }
     }
 }
 
-pub fn sync() -> anyhow::Result<()> {
+pub fn sync() -> bin_error::Result<()> {
     simple_action(rbw::protocol::Action::Sync)
 }
 
-pub fn lock() -> anyhow::Result<()> {
+pub fn lock() -> bin_error::Result<()> {
     simple_action(rbw::protocol::Action::Lock)
 }
 
-pub fn quit() -> anyhow::Result<()> {
+pub fn quit() -> bin_error::Result<()> {
     match crate::sock::Sock::connect() {
         Ok(mut sock) => {
             let pidfile = rbw::dirs::pid_file();
@@ -61,7 +61,7 @@ pub fn quit() -> anyhow::Result<()> {
             let Some(pid) =
                 rustix::process::Pid::from_raw(pid.trim_end().parse()?)
             else {
-                anyhow::bail!("failed to read pid from pidfile");
+                return Err(bin_error::Error::msg(format!("failed to read pid from pidfile")));
             };
             sock.send(&rbw::protocol::Request::new(
                 get_environment(),
@@ -84,7 +84,7 @@ pub fn decrypt(
     cipherstring: &str,
     entry_key: Option<&str>,
     org_id: Option<&str>,
-) -> anyhow::Result<String> {
+) -> bin_error::Result<String> {
     let mut sock = connect()?;
     sock.send(&rbw::protocol::Request::new(
         get_environment(),
@@ -99,16 +99,16 @@ pub fn decrypt(
     match res {
         rbw::protocol::Response::Decrypt { plaintext } => Ok(plaintext),
         rbw::protocol::Response::Error { error } => {
-            Err(anyhow::anyhow!("failed to decrypt: {error}"))
+            Err(bin_error::Error::msg(format!("failed to decrypt: {error}")))
         }
-        _ => Err(anyhow::anyhow!("unexpected message: {res:?}")),
+        _ => Err(bin_error::Error::msg(format!("unexpected message: {res:?}"))),
     }
 }
 
 pub fn encrypt(
     plaintext: &str,
     org_id: Option<&str>,
-) -> anyhow::Result<String> {
+) -> bin_error::Result<String> {
     let mut sock = connect()?;
     sock.send(&rbw::protocol::Request::new(
         get_environment(),
@@ -122,19 +122,19 @@ pub fn encrypt(
     match res {
         rbw::protocol::Response::Encrypt { cipherstring } => Ok(cipherstring),
         rbw::protocol::Response::Error { error } => {
-            Err(anyhow::anyhow!("failed to encrypt: {error}"))
+            Err(bin_error::Error::msg(format!("failed to encrypt: {error}")))
         }
-        _ => Err(anyhow::anyhow!("unexpected message: {res:?}")),
+        _ => Err(bin_error::Error::msg(format!("unexpected message: {res:?}"))),
     }
 }
 
-pub fn clipboard_store(text: &str) -> anyhow::Result<()> {
+pub fn clipboard_store(text: &str) -> bin_error::Result<()> {
     simple_action(rbw::protocol::Action::ClipboardStore {
         text: text.to_string(),
     })
 }
 
-pub fn version() -> anyhow::Result<u32> {
+pub fn version() -> bin_error::Result<u32> {
     let mut sock = connect()?;
     sock.send(&rbw::protocol::Request::new(
         get_environment(),
@@ -145,13 +145,13 @@ pub fn version() -> anyhow::Result<u32> {
     match res {
         rbw::protocol::Response::Version { version } => Ok(version),
         rbw::protocol::Response::Error { error } => {
-            Err(anyhow::anyhow!("failed to get version: {error}"))
+            Err(bin_error::Error::msg(format!("failed to get version: {error}")))
         }
-        _ => Err(anyhow::anyhow!("unexpected message: {res:?}")),
+        _ => Err(bin_error::Error::msg(format!("unexpected message: {res:?}"))),
     }
 }
 
-fn simple_action(action: rbw::protocol::Action) -> anyhow::Result<()> {
+fn simple_action(action: rbw::protocol::Action) -> bin_error::Result<()> {
     let mut sock = connect()?;
 
     sock.send(&rbw::protocol::Request::new(get_environment(), action))?;
@@ -160,13 +160,13 @@ fn simple_action(action: rbw::protocol::Action) -> anyhow::Result<()> {
     match res {
         rbw::protocol::Response::Ack => Ok(()),
         rbw::protocol::Response::Error { error } => {
-            Err(anyhow::anyhow!("{error}"))
+            Err(bin_error::Error::msg(format!("{error}")))
         }
-        _ => Err(anyhow::anyhow!("unexpected message: {res:?}")),
+        _ => Err(bin_error::Error::msg(format!("unexpected message: {res:?}"))),
     }
 }
 
-fn connect() -> anyhow::Result<crate::sock::Sock> {
+fn connect() -> bin_error::Result<crate::sock::Sock> {
     crate::sock::Sock::connect().with_context(|| {
         let log = rbw::dirs::agent_stderr_file();
         format!(

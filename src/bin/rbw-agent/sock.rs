@@ -1,4 +1,4 @@
-use anyhow::Context as _;
+use crate::bin_error::{self, ContextExt as _};
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _};
 
 pub struct Sock(tokio::net::UnixStream);
@@ -11,7 +11,7 @@ impl Sock {
     pub async fn send(
         &mut self,
         res: &rbw::protocol::Response,
-    ) -> anyhow::Result<()> {
+    ) -> bin_error::Result<()> {
         if let rbw::protocol::Response::Error { error } = res {
             log::warn!("{error}");
         }
@@ -32,7 +32,7 @@ impl Sock {
 
     pub async fn recv(
         &mut self,
-    ) -> anyhow::Result<std::result::Result<rbw::protocol::Request, String>>
+    ) -> bin_error::Result<std::result::Result<rbw::protocol::Request, String>>
     {
         let Self(sock) = self;
         let mut buf = tokio::io::BufStream::new(sock);
@@ -45,7 +45,7 @@ impl Sock {
     }
 }
 
-pub fn listen() -> anyhow::Result<tokio::net::UnixListener> {
+pub fn listen() -> bin_error::Result<tokio::net::UnixListener> {
     let path = rbw::dirs::socket_file();
     // if the socket already doesn't exist, that's fine
     let _ = std::fs::remove_file(&path);

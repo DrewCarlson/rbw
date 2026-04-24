@@ -243,6 +243,9 @@ pub enum Error {
 
     #[error("invalid kdf type: {ty}")]
     InvalidKdfType { ty: String },
+
+    #[error("{msg}")]
+    Totp { msg: String },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

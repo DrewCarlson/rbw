@@ -1,10 +1,10 @@
-use anyhow::Context as _;
+use crate::bin_error::{self, ContextExt as _};
 use sha2::Digest as _;
 
 pub async fn register(
     sock: &mut crate::sock::Sock,
     environment: &rbw::protocol::Environment,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     let db = load_db().await.unwrap_or_else(|_| rbw::db::Db::new());
 
     if db.needs_login() {
@@ -12,9 +12,9 @@ pub async fn register(
         let url = reqwest::Url::parse(&url_str)
             .context("failed to parse base url")?;
         let Some(host) = url.host_str() else {
-            return Err(anyhow::anyhow!(
+            return Err(bin_error::Error::msg(format!(
                 "couldn't find host in rbw base url {url_str}"
-            ));
+            )));
         };
 
         let email = config_email().await?;
@@ -79,7 +79,7 @@ pub async fn login(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
     environment: &rbw::protocol::Environment,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     let db = load_db().await.unwrap_or_else(|_| rbw::db::Db::new());
 
     if db.needs_login() {
@@ -87,9 +87,9 @@ pub async fn login(
         let url = reqwest::Url::parse(&url_str)
             .context("failed to parse base url")?;
         let Some(host) = url.host_str() else {
-            return Err(anyhow::anyhow!(
+            return Err(bin_error::Error::msg(format!(
                 "couldn't find host in rbw base url {url_str}"
-            ));
+            )));
         };
 
         let email = config_email().await?;
@@ -198,9 +198,9 @@ pub async fn login(
                             break 'attempts;
                         }
                     }
-                    return Err(anyhow::anyhow!(
+                    return Err(bin_error::Error::msg(format!(
                         "unsupported two factor methods: {providers:?}"
-                    ));
+                    )));
                 }
                 Err(rbw::error::Error::IncorrectPassword { message }) => {
                     if i == 3 {
@@ -229,7 +229,7 @@ async fn two_factor(
     email: &str,
     password: rbw::locked::Password,
     provider: rbw::api::TwoFactorProviderType,
-) -> anyhow::Result<(
+) -> bin_error::Result<(
     String,
     String,
     rbw::api::KdfType,
@@ -328,7 +328,7 @@ async fn login_success(
     password: rbw::locked::Password,
     mut db: rbw::db::Db,
     email: String,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     db.access_token = Some(access_token.clone());
     db.refresh_token = Some(refresh_token.clone());
     db.kdf = Some(kdf);
@@ -342,8 +342,8 @@ async fn login_success(
     let db = load_db().await?;
 
     let Some(protected_private_key) = db.protected_private_key else {
-        return Err(anyhow::anyhow!(
-            "failed to find protected private key in db"
+        return Err(bin_error::Error::msg(
+            "failed to find protected private key in db",
         ));
     };
 
@@ -374,17 +374,17 @@ async fn login_success(
 async fn unlock_state(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
     environment: &rbw::protocol::Environment,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     if state.lock().await.needs_unlock() {
         let db = load_db().await?;
 
         let Some(kdf) = db.kdf else {
-            return Err(anyhow::anyhow!("failed to find kdf type in db"));
+            return Err(bin_error::Error::msg("failed to find kdf type in db"));
         };
 
         let Some(iterations) = db.iterations else {
-            return Err(anyhow::anyhow!(
-                "failed to find number of iterations in db"
+            return Err(bin_error::Error::msg(
+                "failed to find number of iterations in db",
             ));
         };
 
@@ -392,13 +392,13 @@ async fn unlock_state(
         let parallelism = db.parallelism;
 
         let Some(protected_key) = db.protected_key else {
-            return Err(anyhow::anyhow!(
-                "failed to find protected key in db"
+            return Err(bin_error::Error::msg(
+                "failed to find protected key in db",
             ));
         };
         let Some(protected_private_key) = db.protected_private_key else {
-            return Err(anyhow::anyhow!(
-                "failed to find protected private key in db"
+            return Err(bin_error::Error::msg(
+                "failed to find protected private key in db",
             ));
         };
 
@@ -462,7 +462,7 @@ pub async fn unlock(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
     environment: &rbw::protocol::Environment,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     unlock_state(state, environment).await?;
 
     respond_ack(sock).await?;
@@ -474,7 +474,7 @@ async fn unlock_success(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
     keys: rbw::locked::Keys,
     org_keys: std::collections::HashMap<String, rbw::locked::Keys>,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     let mut state = state.lock().await;
     state.priv_key = Some(keys);
     state.org_keys = Some(org_keys);
@@ -484,7 +484,7 @@ async fn unlock_success(
 pub async fn lock(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     state.lock().await.clear();
 
     respond_ack(sock).await?;
@@ -495,9 +495,9 @@ pub async fn lock(
 pub async fn check_lock(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     if state.lock().await.needs_unlock() {
-        return Err(anyhow::anyhow!("agent is locked"));
+        return Err(bin_error::Error::msg("agent is locked"));
     }
 
     respond_ack(sock).await?;
@@ -508,18 +508,20 @@ pub async fn check_lock(
 pub async fn sync(
     sock: Option<&mut crate::sock::Sock>,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     let mut db = load_db().await?;
 
     let access_token = if let Some(access_token) = &db.access_token {
         access_token.clone()
     } else {
-        return Err(anyhow::anyhow!("failed to find access token in db"));
+        return Err(bin_error::Error::msg("failed to find access token in db"));
     };
     let refresh_token = if let Some(refresh_token) = &db.refresh_token {
         refresh_token.clone()
     } else {
-        return Err(anyhow::anyhow!("failed to find refresh token in db"));
+        return Err(bin_error::Error::msg(
+            "failed to find refresh token in db",
+        ));
     };
     let (
         access_token,
@@ -554,15 +556,15 @@ async fn decrypt_cipher(
     cipherstring: &str,
     entry_key: Option<&str>,
     org_id: Option<&str>,
-) -> anyhow::Result<String> {
+) -> bin_error::Result<String> {
     let mut state = state.lock().await;
     if !state.master_password_reprompt_initialized() {
         let db = load_db().await?;
         state.set_master_password_reprompt(&db.entries);
     }
     let Some(keys) = state.key(org_id) else {
-        return Err(anyhow::anyhow!(
-            "failed to find decryption keys in in-memory state"
+        return Err(bin_error::Error::msg(
+            "failed to find decryption keys in in-memory state",
         ));
     };
     let entry_key = if let Some(entry_key) = entry_key {
@@ -588,12 +590,12 @@ async fn decrypt_cipher(
         let db = load_db().await?;
 
         let Some(kdf) = db.kdf else {
-            return Err(anyhow::anyhow!("failed to find kdf type in db"));
+            return Err(bin_error::Error::msg("failed to find kdf type in db"));
         };
 
         let Some(iterations) = db.iterations else {
-            return Err(anyhow::anyhow!(
-                "failed to find number of iterations in db"
+            return Err(bin_error::Error::msg(
+                "failed to find number of iterations in db",
             ));
         };
 
@@ -601,13 +603,13 @@ async fn decrypt_cipher(
         let parallelism = db.parallelism;
 
         let Some(protected_key) = db.protected_key else {
-            return Err(anyhow::anyhow!(
-                "failed to find protected key in db"
+            return Err(bin_error::Error::msg(
+                "failed to find protected key in db",
             ));
         };
         let Some(protected_private_key) = db.protected_private_key else {
-            return Err(anyhow::anyhow!(
-                "failed to find protected private key in db"
+            return Err(bin_error::Error::msg(
+                "failed to find protected private key in db",
             ));
         };
 
@@ -679,7 +681,7 @@ pub async fn decrypt(
     cipherstring: &str,
     entry_key: Option<&str>,
     org_id: Option<&str>,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     let plaintext =
         decrypt_cipher(state, environment, cipherstring, entry_key, org_id)
             .await?;
@@ -693,11 +695,11 @@ pub async fn encrypt(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
     plaintext: &str,
     org_id: Option<&str>,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     let state = state.lock().await;
     let Some(keys) = state.key(org_id) else {
-        return Err(anyhow::anyhow!(
-            "failed to find encryption keys in in-memory state"
+        return Err(bin_error::Error::msg(
+            "failed to find encryption keys in in-memory state",
         ));
     };
     let cipherstring = rbw::cipherstring::CipherString::encrypt_symmetric(
@@ -716,11 +718,13 @@ pub async fn clipboard_store(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
     text: &str,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     let mut state = state.lock().await;
     if let Some(clipboard) = &mut state.clipboard {
         clipboard.set_text(text).map_err(|e| {
-            anyhow::anyhow!("couldn't store value to clipboard: {e}")
+            bin_error::Error::msg(format!(
+                "couldn't store value to clipboard: {e}"
+            ))
         })?;
     }
 
@@ -734,7 +738,7 @@ pub async fn clipboard_store(
     sock: &mut crate::sock::Sock,
     _state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
     _text: &str,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     sock.send(&rbw::protocol::Response::Error {
         error: "clipboard not supported".to_string(),
     })
@@ -743,7 +747,7 @@ pub async fn clipboard_store(
     Ok(())
 }
 
-pub async fn version(sock: &mut crate::sock::Sock) -> anyhow::Result<()> {
+pub async fn version(sock: &mut crate::sock::Sock) -> bin_error::Result<()> {
     sock.send(&rbw::protocol::Response::Version {
         version: rbw::protocol::VERSION,
     })
@@ -752,7 +756,7 @@ pub async fn version(sock: &mut crate::sock::Sock) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn respond_ack(sock: &mut crate::sock::Sock) -> anyhow::Result<()> {
+async fn respond_ack(sock: &mut crate::sock::Sock) -> bin_error::Result<()> {
     sock.send(&rbw::protocol::Response::Ack).await?;
 
     Ok(())
@@ -761,7 +765,7 @@ async fn respond_ack(sock: &mut crate::sock::Sock) -> anyhow::Result<()> {
 async fn respond_decrypt(
     sock: &mut crate::sock::Sock,
     plaintext: String,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     sock.send(&rbw::protocol::Response::Decrypt { plaintext })
         .await?;
 
@@ -771,56 +775,61 @@ async fn respond_decrypt(
 async fn respond_encrypt(
     sock: &mut crate::sock::Sock,
     cipherstring: String,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     sock.send(&rbw::protocol::Response::Encrypt { cipherstring })
         .await?;
 
     Ok(())
 }
 
-async fn config_email() -> anyhow::Result<String> {
+async fn config_email() -> bin_error::Result<String> {
     let config = rbw::config::Config::load_async().await?;
     config.email.map_or_else(
-        || Err(anyhow::anyhow!("failed to find email address in config")),
+        || {
+            Err(bin_error::Error::msg(
+                "failed to find email address in config",
+            ))
+        },
         Ok,
     )
 }
 
-async fn load_db() -> anyhow::Result<rbw::db::Db> {
+async fn load_db() -> bin_error::Result<rbw::db::Db> {
     let config = rbw::config::Config::load_async().await?;
     if let Some(email) = &config.email {
-        rbw::db::Db::load_async(&config.server_name(), email)
-            .await
-            .map_err(anyhow::Error::new)
+        Ok(rbw::db::Db::load_async(&config.server_name(), email).await?)
     } else {
-        Err(anyhow::anyhow!("failed to find email address in config"))
+        Err(bin_error::Error::msg(
+            "failed to find email address in config",
+        ))
     }
 }
 
-async fn save_db(db: &rbw::db::Db) -> anyhow::Result<()> {
+async fn save_db(db: &rbw::db::Db) -> bin_error::Result<()> {
     let config = rbw::config::Config::load_async().await?;
     if let Some(email) = &config.email {
-        db.save_async(&config.server_name(), email)
-            .await
-            .map_err(anyhow::Error::new)
+        db.save_async(&config.server_name(), email).await?;
+        Ok(())
     } else {
-        Err(anyhow::anyhow!("failed to find email address in config"))
+        Err(bin_error::Error::msg(
+            "failed to find email address in config",
+        ))
     }
 }
 
-async fn config_base_url() -> anyhow::Result<String> {
+async fn config_base_url() -> bin_error::Result<String> {
     let config = rbw::config::Config::load_async().await?;
     Ok(config.base_url())
 }
 
-async fn config_pinentry() -> anyhow::Result<String> {
+async fn config_pinentry() -> bin_error::Result<String> {
     let config = rbw::config::Config::load_async().await?;
     Ok(config.pinentry)
 }
 
 pub async fn subscribe_to_notifications(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     if state.lock().await.notifications_handler.is_connected() {
         return Ok(());
     }
@@ -847,12 +856,12 @@ pub async fn subscribe_to_notifications(
         .connect(websocket_url)
         .await
         .err()
-        .map_or_else(|| Ok(()), |err| Err(anyhow::anyhow!(err.to_string())))
+        .map_or_else(|| Ok(()), |err| Err(bin_error::Error::msg(err.to_string())))
 }
 
 pub async fn get_ssh_public_keys(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-) -> anyhow::Result<Vec<String>> {
+) -> bin_error::Result<Vec<String>> {
     let environment = {
         let state = state.lock().await;
         state.set_timeout();
@@ -888,7 +897,7 @@ pub async fn get_ssh_public_keys(
 pub async fn find_ssh_private_key(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
     request_public_key: ssh_agent_lib::ssh_key::PublicKey,
-) -> anyhow::Result<ssh_agent_lib::ssh_key::PrivateKey> {
+) -> bin_error::Result<ssh_agent_lib::ssh_key::PrivateKey> {
     let environment = {
         let state = state.lock().await;
         state.set_timeout();
@@ -922,13 +931,15 @@ pub async fn find_ssh_private_key(
                 ssh_agent_lib::ssh_key::PublicKey::from_openssh(
                     &public_key_plaintext,
                 )
-                .map_err(anyhow::Error::new)?
+                .map_err(|e| bin_error::Error::Boxed(Box::new(e)))?
                 .to_bytes();
 
             if public_key_bytes == request_bytes {
                 let private_key_enc =
                     private_key.as_ref().ok_or_else(|| {
-                        anyhow::anyhow!("Matching entry has no private key")
+                        bin_error::Error::msg(
+                            "Matching entry has no private key",
+                        )
                     })?;
 
                 let private_key_plaintext = decrypt_cipher(
@@ -943,10 +954,10 @@ pub async fn find_ssh_private_key(
                 return ssh_agent_lib::ssh_key::PrivateKey::from_openssh(
                     private_key_plaintext,
                 )
-                .map_err(anyhow::Error::new);
+                .map_err(|e| bin_error::Error::Boxed(Box::new(e)));
             }
         }
     }
 
-    Err(anyhow::anyhow!("No matching private key found"))
+    Err(bin_error::Error::msg("No matching private key found"))
 }

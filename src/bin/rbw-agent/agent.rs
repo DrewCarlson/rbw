@@ -1,4 +1,4 @@
-use anyhow::Context as _;
+use crate::bin_error::{self, ContextExt as _};
 use futures_util::StreamExt as _;
 
 pub struct Agent {
@@ -23,7 +23,7 @@ impl Agent {
     pub async fn run(
         self,
         listener: tokio::net::UnixListener,
-    ) -> anyhow::Result<()> {
+    ) -> bin_error::Result<()> {
         pub enum Event {
             Request(std::io::Result<tokio::net::UnixStream>),
             Timeout(()),
@@ -108,7 +108,7 @@ impl Agent {
 async fn handle_request(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-) -> anyhow::Result<()> {
+) -> bin_error::Result<()> {
     let req = sock.recv().await?;
     let req = match req {
         Ok(msg) => msg,
