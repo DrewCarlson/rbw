@@ -214,6 +214,7 @@ impl RbwHarness {
             "sso_id": null,
             "ui_url": null,
             "notifications_url": null,
+            "macos_unlock_dialog": false,
         });
         std::fs::write(
             rbw_cfg_dir.join("config.json"),
@@ -273,6 +274,7 @@ impl RbwHarness {
             "sso_id": null,
             "ui_url": null,
             "notifications_url": null,
+            "macos_unlock_dialog": false,
         });
         std::fs::write(
             rbw_cfg_dir.join("config.json"),
