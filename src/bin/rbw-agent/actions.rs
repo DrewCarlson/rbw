@@ -712,11 +712,11 @@ async fn try_unlock_via_touchid(
     let prompt = format!("Unlock the {} vault", rbw::dirs::profile());
     let seed =
         match rbw::touchid::keychain::load(&blob.keychain_label, &prompt) {
-            Ok(bytes) if bytes.len() == 64 => bytes,
+            Ok(bytes) if bytes.data().len() == 64 => bytes,
             Ok(other) => {
                 log::warn!(
                     "touchid: wrapper key has unexpected length: {}",
-                    other.len()
+                    other.data().len()
                 );
                 return TouchIdUnlockOutcome::Fallback(
                     "Touch ID wrapper key corrupted; re-enroll",
@@ -752,7 +752,8 @@ async fn try_unlock_via_touchid(
                 );
             }
         };
-    let wrapper_keys = rbw::touchid::blob::keys_from_wrapper_seed(&seed);
+    let wrapper_keys =
+        rbw::touchid::blob::keys_from_wrapper_seed(seed.data());
 
     let Ok(cs) = rbw::cipherstring::CipherString::new(&blob.wrapped_priv_key)
     else {
@@ -1134,12 +1135,15 @@ pub async fn touchid_enroll(
         }
     }
 
-    // Generate a random 64-byte wrapper seed; derive a locked::Keys from
-    // it; wrap the in-memory priv_key + every org key; store the seed in
-    // Keychain under a fresh label; write the blob to disk.
-    let mut seed = [0u8; 64];
-    rand::rng().fill_bytes(&mut seed);
-    let wrapper_keys = rbw::touchid::blob::keys_from_wrapper_seed(&seed);
+    // Generate a random 64-byte wrapper seed. The buffer lives in a
+    // `locked::Vec` (mlocked + zeroized on drop) so the seed never sits
+    // in ordinary heap / stack memory that could be recovered from a
+    // core dump or swap.
+    let mut seed = rbw::locked::Vec::new();
+    seed.extend(std::iter::repeat_n(0u8, 64));
+    rand::rng().fill_bytes(seed.data_mut());
+    let wrapper_keys =
+        rbw::touchid::blob::keys_from_wrapper_seed(seed.data());
 
     let label = format!("rbw-touchid-{}", rbw::uuid::new_v4());
 
@@ -1177,7 +1181,7 @@ pub async fn touchid_enroll(
     if let Ok(existing) = rbw::touchid::blob::Blob::load() {
         let _ = rbw::touchid::keychain::delete(&existing.keychain_label);
     }
-    rbw::touchid::keychain::store(&label, &seed)
+    rbw::touchid::keychain::store(&label, seed.data())
         .map_err(|e| bin_error::Error::msg(e.to_string()))?;
 
     let blob = rbw::touchid::blob::Blob {
@@ -1367,10 +1371,23 @@ pub async fn get_ssh_public_keys(
     Ok(pubkeys)
 }
 
-pub async fn find_ssh_private_key(
+/// Encrypted handle to an SSH entry that matched the requested pubkey.
+/// Holds the still-encrypted `private_key` cipherstring plus whatever
+/// envelope metadata we need to decrypt it later, after user
+/// confirmation. The plaintext private key is intentionally **not**
+/// pulled into memory here so a cancelled confirm leaves no key
+/// material on the heap.
+pub struct LocatedSshEntry {
+    pub private_key_enc: String,
+    pub entry_key: Option<String>,
+    pub org_id: Option<String>,
+    pub name: String,
+}
+
+pub async fn locate_ssh_private_key(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
     request_public_key: ssh_agent_lib::ssh_key::PublicKey,
-) -> bin_error::Result<(ssh_agent_lib::ssh_key::PrivateKey, String)> {
+) -> bin_error::Result<LocatedSshEntry> {
     let environment = {
         let state = state.lock().await;
         state.set_timeout();
@@ -1415,15 +1432,6 @@ pub async fn find_ssh_private_key(
                         )
                     })?;
 
-                let private_key_plaintext = decrypt_cipher(
-                    state.clone(),
-                    &environment,
-                    private_key_enc,
-                    entry.key.as_deref(),
-                    entry.org_id.as_deref(),
-                )
-                .await?;
-
                 let name_plaintext = decrypt_cipher(
                     state.clone(),
                     &environment,
@@ -1434,14 +1442,40 @@ pub async fn find_ssh_private_key(
                 .await
                 .unwrap_or_else(|_| "<unknown>".to_string());
 
-                let pk = ssh_agent_lib::ssh_key::PrivateKey::from_openssh(
-                    private_key_plaintext,
-                )
-                .map_err(|e| bin_error::Error::Boxed(Box::new(e)))?;
-                return Ok((pk, name_plaintext));
+                return Ok(LocatedSshEntry {
+                    private_key_enc: private_key_enc.clone(),
+                    entry_key: entry.key.clone(),
+                    org_id: entry.org_id.clone(),
+                    name: name_plaintext,
+                });
             }
         }
     }
 
     Err(bin_error::Error::msg("No matching private key found"))
+}
+
+/// Second phase of the split SSH-sign flow: decrypt the private key
+/// cipherstring located by `locate_ssh_private_key`, only after the
+/// user has already confirmed Touch ID / pinentry CONFIRM. Callers
+/// must drop the returned `PrivateKey` as soon as the sign operation
+/// completes.
+pub async fn decrypt_located_ssh_private_key(
+    state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
+    located: &LocatedSshEntry,
+) -> bin_error::Result<ssh_agent_lib::ssh_key::PrivateKey> {
+    let environment = {
+        let state = state.lock().await;
+        state.last_environment().clone()
+    };
+    let plaintext = decrypt_cipher(
+        state,
+        &environment,
+        &located.private_key_enc,
+        located.entry_key.as_deref(),
+        located.org_id.as_deref(),
+    )
+    .await?;
+    ssh_agent_lib::ssh_key::PrivateKey::from_openssh(plaintext)
+        .map_err(|e| bin_error::Error::Boxed(Box::new(e)))
 }

@@ -197,7 +197,7 @@ pub fn store(label: &str, secret: &[u8]) -> Result<(), Error> {
 /// `Error::UserCancelled`. If the biometric enrollment has changed since
 /// this item was written, macOS returns an "authentication failed"
 /// error which we map to `Error::Invalidated`.
-pub fn load(label: &str, prompt: &str) -> Result<Vec<u8>, Error> {
+pub fn load(label: &str, prompt: &str) -> Result<crate::locked::Vec, Error> {
     unsafe {
         let service = CFString::new(SERVICE);
         let account = CFString::new(label);
@@ -239,7 +239,13 @@ pub fn load(label: &str, prompt: &str) -> Result<Vec<u8>, Error> {
         match status {
             s if s == errSecSuccess && !result.is_null() => {
                 let data = CFData::wrap_under_create_rule(result as *mut _);
-                Ok(data.bytes().to_vec())
+                // Copy the CFData bytes directly into a locked (mlocked +
+                // zeroized-on-drop) buffer. Never materialize a plain
+                // `Vec<u8>` that would linger on the heap after this
+                // function returns.
+                let mut buf = crate::locked::Vec::new();
+                buf.extend(data.bytes().iter().copied());
+                Ok(buf)
             }
             s if s == errSecItemNotFound => Err(Error::NotFound),
             // errSecUserCanceled = -128, errSecAuthFailed = -25293

@@ -57,6 +57,8 @@ pub fn prompt_master_password(
 mod imp {
     use std::process::Command;
 
+    use zeroize::Zeroize as _;
+
     use super::{locked, Error, InputKind};
 
     /// AppleScript double-quoted-string escape: backslash + double
@@ -101,7 +103,7 @@ mod imp {
             btn = escape(button),
         );
 
-        let output = Command::new("/usr/bin/osascript")
+        let mut output = Command::new("/usr/bin/osascript")
             .arg("-e")
             .arg(&script)
             .output()
@@ -110,6 +112,18 @@ mod imp {
                 stage: "osascript spawn",
             })?;
 
+        // Ensure the stdout buffer — which contains the typed password on
+        // the success path — is zeroed before `output` drops, regardless of
+        // which branch we leave by.
+        let result = extract_password(&output);
+        output.stdout.zeroize();
+        output.stderr.zeroize();
+        result
+    }
+
+    fn extract_password(
+        output: &std::process::Output,
+    ) -> Result<locked::Password, Error> {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if stderr.contains("User canceled") || stderr.contains("-128") {

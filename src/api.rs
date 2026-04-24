@@ -1895,8 +1895,10 @@ fn sso_query_code(
             })?;
 
     if received_state.split("_identifier=").next().unwrap() != state {
+        // Intentionally does not include either state value — they are
+        // live OAuth state tokens and this error can reach stderr / logs.
         return Err(Error::FailedToProcessSSOCallback {
-            msg: format!("SSO callback states do not match, sent: {state}, received: {received_state}"),
+            msg: "SSO callback state mismatch".to_string(),
         });
     }
 
