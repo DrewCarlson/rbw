@@ -2,8 +2,40 @@ use zeroize::Zeroize as _;
 
 const LEN: usize = 4096;
 
-static REGION_LOCK_WORKS: std::sync::OnceLock<bool> =
-    std::sync::OnceLock::new();
+static MLOCK_WORKS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// RAII guard around `mlock`/`munlock`. `munlock` can spuriously fail with
+/// `ENOMEM` on musl under `RLIMIT_MEMLOCK` pressure (common in CI
+/// containers); the pages are already released on process exit, so a
+/// best-effort unlock is fine — never panic on drop.
+struct MlockGuard {
+    ptr: *mut core::ffi::c_void,
+    len: usize,
+}
+
+// The guard only tracks an address + length we own for the lifetime of the
+// owning `FixedVec`; it's safe to move across threads.
+unsafe impl Send for MlockGuard {}
+unsafe impl Sync for MlockGuard {}
+
+impl Drop for MlockGuard {
+    fn drop(&mut self) {
+        // SAFETY: (ptr, len) came from a successful `mlock` call on a
+        // `Box<FixedVec>` that is still live (guard is dropped before the
+        // box).
+        let _ = unsafe { rustix::mm::munlock(self.ptr, self.len) };
+    }
+}
+
+fn try_mlock(ptr: *const u8, len: usize) -> rustix::io::Result<MlockGuard> {
+    // rustix takes *mut c_void; mlock doesn't mutate, but the POSIX
+    // signature is *mut.
+    let p = ptr.cast::<core::ffi::c_void>().cast_mut();
+    // SAFETY: `ptr` points to a live allocation of at least `len` bytes
+    // owned by the caller.
+    unsafe { rustix::mm::mlock(p, len) }?;
+    Ok(MlockGuard { ptr: p, len })
+}
 
 pub struct FixedVec<const N: usize> {
     data: [u8; N],
@@ -57,27 +89,24 @@ impl<const N: usize> Drop for FixedVec<N> {
 
 pub struct Vec {
     data: Box<FixedVec<LEN>>,
-    _lock: Option<region::LockGuard>,
+    _lock: Option<MlockGuard>,
 }
 
 impl Default for Vec {
     fn default() -> Self {
         let data = Box::new(FixedVec::<LEN>::new());
-        let lock = match REGION_LOCK_WORKS.get() {
-            Some(true) => Some(
-                region::lock(data.as_ptr(), FixedVec::<LEN>::capacity())
-                    .unwrap(),
-            ),
+        let lock = match MLOCK_WORKS.get() {
+            Some(true) => try_mlock(data.as_ptr(), FixedVec::<LEN>::capacity())
+                .ok(),
             Some(false) => None,
             None => {
-                match region::lock(data.as_ptr(), FixedVec::<LEN>::capacity())
-                {
+                match try_mlock(data.as_ptr(), FixedVec::<LEN>::capacity()) {
                     Ok(lock) => {
-                        let _ = REGION_LOCK_WORKS.set(true);
+                        let _ = MLOCK_WORKS.set(true);
                         Some(lock)
                     }
                     Err(e) => {
-                        if REGION_LOCK_WORKS.set(false).is_ok() {
+                        if MLOCK_WORKS.set(false).is_ok() {
                             eprintln!("failed to lock memory region: {e}");
                         }
                         None
