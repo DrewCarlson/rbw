@@ -997,20 +997,22 @@ impl Client {
     }
 
     async fn reqwest_client(&self) -> Result<reqwest::Client> {
-        let mut default_headers = axum::http::HeaderMap::new();
+        let mut default_headers = reqwest::header::HeaderMap::new();
         default_headers.insert(
             "Bitwarden-Client-Name",
-            axum::http::HeaderValue::from_static(BITWARDEN_CLIENT),
+            reqwest::header::HeaderValue::from_static(BITWARDEN_CLIENT),
         );
         default_headers.insert(
             "Bitwarden-Client-Version",
-            axum::http::HeaderValue::from_static(env!("CARGO_PKG_VERSION")),
+            reqwest::header::HeaderValue::from_static(env!(
+                "CARGO_PKG_VERSION"
+            )),
         );
         default_headers.append(
             "Device-Type",
             // unwrap is safe here because DEVICE_TYPE is a number and digits
             // are valid ASCII
-            axum::http::HeaderValue::from_str(&DEVICE_TYPE.to_string())
+            reqwest::header::HeaderValue::from_str(&DEVICE_TYPE.to_string())
                 .unwrap(),
         );
         let user_agent = format!(
@@ -1765,78 +1767,113 @@ async fn find_free_port(bottom: u16, top: u16) -> Result<u16> {
     })
 }
 
-#[derive(Clone)]
-struct SSOHandlerState {
-    state: String,
-    sender: tokio::sync::mpsc::Sender<Result<String>>,
-}
-
 async fn start_sso_callback_server(
     listener: tokio::net::TcpListener,
     state: &str,
 ) -> Result<String> {
-    let (shut_sender, shut_receiver) = tokio::sync::mpsc::channel(1);
-    let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    const SUCCESS_BODY: &str =
+        "<html><head><title>Success | rbw</title></head><body> \
+         <h1>Successfully authenticated with rbw</h1> \
+         <p>You may now close this tab and return to the terminal.</p> \
+         </body></html>";
+    const FAILURE_BODY: &str =
+        "<html><head><title>Failed | rbw</title></head><body> \
+         <h1>Something went wrong logging into the rbw</h1> \
+         <p>You may now close this tab and return to the terminal.</p> \
+         </body></html>";
+    const MAX_REQUEST_BYTES: usize = 16 * 1024;
 
-    let sso_handler_state = std::sync::Arc::new(SSOHandlerState {
-        state: state.to_string(),
-        sender: shut_sender,
-    });
-
-    let app = axum::Router::new()
-        .route("/", axum::routing::get(handle_sso_callback))
-        .with_state(sso_handler_state);
-
-    axum::serve(listener, app)
-        .with_graceful_shutdown(sso_server_graceful_shutdown(
-            sender,
-            shut_receiver,
-        ))
-        .await
-        .map_err(|e| Error::FailedToProcessSSOCallback {
-            msg: e.to_string(),
+    loop {
+        let (mut stream, _peer) = listener.accept().await.map_err(|e| {
+            Error::FailedToProcessSSOCallback {
+                msg: format!("accept: {e}"),
+            }
         })?;
 
-    receiver.recv().await.unwrap()
-}
-
-async fn sso_server_graceful_shutdown(
-    sender: tokio::sync::mpsc::Sender<Result<String>>,
-    mut receiver: tokio::sync::mpsc::Receiver<Result<String>>,
-) {
-    sender.send(receiver.recv().await.unwrap()).await.unwrap();
-}
-
-async fn handle_sso_callback(
-    axum::extract::State(state): axum::extract::State<
-        std::sync::Arc<SSOHandlerState>,
-    >,
-    axum::extract::Query(params): axum::extract::Query<
-        std::collections::HashMap<String, String>,
-    >,
-) -> axum::http::Response<String> {
-    match sso_query_code(&params, state.state.as_str()) {
-        Ok(sso_code) => {
-            state.sender.send(Ok(sso_code)).await.unwrap();
-
-            axum::http::Response::builder().status(axum::http::StatusCode::OK).
-            body(
-                "<html><head><title>Success | rbw</title></head><body> \
-                  <h1>Successfully authenticated with rbw</h1> \
-                  <p>You may now close this tab and return to the terminal.</p> \
-                  </body></html>".to_string()).unwrap()
+        let mut buf = Vec::with_capacity(1024);
+        let mut chunk = [0u8; 1024];
+        let headers_complete = loop {
+            let Ok(n) = stream.read(&mut chunk).await else {
+                break false;
+            };
+            if n == 0 {
+                break false;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                break true;
+            }
+            if buf.len() >= MAX_REQUEST_BYTES {
+                break false;
+            }
+        };
+        if !headers_complete {
+            continue;
         }
-        Err(e) => {
-            state.sender.send(Err(e)).await.unwrap();
 
-            axum::http::Response::builder().status(axum::http::StatusCode::BAD_REQUEST).
-            body(
-                "<html><head><title>Failed | rbw</title></head><body> \
-                  <h1>Something went wrong logging into the rbw</h1> \
-                  <p>You may now close this tab and return to the terminal.</p> \
-                  </body></html>".to_string()).unwrap()
+        let request_line = std::str::from_utf8(&buf)
+            .ok()
+            .and_then(|s| s.lines().next())
+            .unwrap_or("");
+        let mut parts = request_line.split_whitespace();
+        let method = parts.next().unwrap_or("");
+        let target = parts.next().unwrap_or("");
+
+        if method != "GET" {
+            let _ = write_response(
+                &mut stream,
+                "405 Method Not Allowed",
+                FAILURE_BODY,
+            )
+            .await;
+            continue;
         }
+
+        let query = target.split_once('?').map_or("", |x| x.1);
+        let params = parse_query(query);
+        let result = sso_query_code(&params, state);
+
+        let (status, body) = match &result {
+            Ok(_) => ("200 OK", SUCCESS_BODY),
+            Err(_) => ("400 Bad Request", FAILURE_BODY),
+        };
+        let _ = write_response(&mut stream, status, body).await;
+        let _ = stream.shutdown().await;
+
+        return result;
     }
+}
+
+fn parse_query(query: &str) -> std::collections::HashMap<String, String> {
+    query
+        .split('&')
+        .filter(|kv| !kv.is_empty())
+        .filter_map(|kv| {
+            let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
+            let key = urlencoding::decode(k).ok()?.into_owned();
+            let val = urlencoding::decode(v).ok()?.into_owned();
+            Some((key, val))
+        })
+        .collect()
+}
+
+async fn write_response(
+    stream: &mut tokio::net::TcpStream,
+    status: &str,
+    body: &str,
+) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt as _;
+    let response = format!(
+        "HTTP/1.1 {status}\r\n\
+         Content-Type: text/html; charset=utf-8\r\n\
+         Content-Length: {len}\r\n\
+         Connection: close\r\n\
+         \r\n\
+         {body}",
+        len = body.len(),
+    );
+    stream.write_all(response.as_bytes()).await
 }
 
 fn sso_query_code(

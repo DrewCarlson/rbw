@@ -16,7 +16,6 @@ include = ["src/**/*", "bin/**/*", "LICENSE", "README.md", "CHANGELOG.md"]
 [dependencies]
 aes = "0.8.4"
 argon2 = "0.5.3"
-axum = "0.8.8"
 base64 = "0.22.1"
 cbc = { version = "0.1.2", features = ["alloc", "std"] }
 clap_complete = "4.5.62"
