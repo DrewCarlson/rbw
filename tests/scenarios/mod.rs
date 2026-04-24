@@ -13,6 +13,7 @@ pub mod profile_isolation;
 pub mod purge_and_sync;
 pub mod raw_output;
 pub mod smoke;
+pub mod ssh_agent;
 pub mod totp_code;
 pub mod uri_matching;
 pub mod wrong_password;

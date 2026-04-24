@@ -667,6 +667,56 @@ pub fn authenticate(
     })
 }
 
+/// Upload an `SshKey` cipher (Bitwarden type 5). `private_key_openssh` is
+/// the full PEM-wrapped OpenSSH private key; `public_key_openssh` is the
+/// single line `ssh-ed25519 AAAA... [comment]` form; `fingerprint` is
+/// typically `SHA256:…`. All three are encrypted client-side.
+pub fn upload_ssh_cipher(
+    server: &VaultwardenServer,
+    account: &Account,
+    name: &str,
+    private_key_openssh: &str,
+    public_key_openssh: &str,
+    fingerprint: &str,
+) -> Result<(), String> {
+    let encrypt = |s: &str| -> Result<String, String> {
+        CipherString::encrypt_symmetric(&account.vault_keys, s.as_bytes())
+            .map(|c| c.to_string())
+            .map_err(|e| format!("encrypt field: {e}"))
+    };
+
+    let body = serde_json::json!({
+        "type": 5,
+        "name": encrypt(name)?,
+        "notes": null,
+        "favorite": false,
+        "folderId": null,
+        "organizationId": null,
+        "sshKey": {
+            "privateKey": encrypt(private_key_openssh)?,
+            "publicKey": encrypt(public_key_openssh)?,
+            "keyFingerprint": encrypt(fingerprint)?,
+        },
+    });
+
+    let url = format!("{}/api/ciphers", server.base_url);
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .post(&url)
+        .bearer_auth(&account.access_token)
+        .json(&body)
+        .send()
+        .map_err(|e| format!("POST ssh cipher: {e}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().unwrap_or_default();
+        return Err(format!(
+            "ssh cipher upload failed: {status} body={text}"
+        ));
+    }
+    Ok(())
+}
+
 /// Upload a Login cipher with the supplied plaintext fields. Everything
 /// listed on the cipher is encrypted client-side with the account's vault
 /// key first; vaultwarden never sees plaintext.
