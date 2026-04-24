@@ -202,9 +202,10 @@ impl CipherString {
         private_key: &crate::locked::PrivateKey,
     ) -> Result<crate::locked::Vec> {
         if let Self::Asymmetric { ciphertext } = self {
+            // Padding was already stripped by decrypt_locked_symmetric when
+            // the private key was unwrapped; the stored bytes are raw PKCS#8
+            // DER at this point.
             let privkey_data = private_key.private_key();
-            let privkey_data =
-                pkcs7_unpad(privkey_data).ok_or(Error::Padding)?;
             let pkey = rsa::RsaPrivateKey::from_pkcs8_der(privkey_data)
                 .map_err(|source| Error::RsaPkcs8 { source })?;
             let mut bytes = pkey
