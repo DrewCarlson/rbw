@@ -16,4 +16,5 @@ mod prelude;
 pub mod protocol;
 pub mod pwgen;
 pub mod totp;
+pub mod uuid;
 pub mod wordlist;

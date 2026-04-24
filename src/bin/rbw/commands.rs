@@ -46,7 +46,7 @@ const MISSING_CONFIG_HELP: &str =
 pub enum Needle {
     Name(String),
     Uri(url::Url),
-    Uuid(uuid::Uuid, String),
+    Uuid(rbw::uuid::Uuid, String),
 }
 
 impl std::fmt::Display for Needle {
@@ -62,7 +62,7 @@ impl std::fmt::Display for Needle {
 
 #[allow(clippy::unnecessary_wraps)]
 pub fn parse_needle(arg: &str) -> Result<Needle, std::convert::Infallible> {
-    if let Ok(uuid) = uuid::Uuid::parse_str(arg) {
+    if let Ok(uuid) = arg.parse::<rbw::uuid::Uuid>() {
         return Ok(Needle::Uuid(uuid, arg.to_string()));
     }
     if let Ok(url) = url::Url::parse(arg) {
@@ -298,7 +298,7 @@ impl DecryptedSearchCipher {
 
         match needle {
             Needle::Uuid(uuid, s) => {
-                if uuid::Uuid::parse_str(&self.id) != Ok(*uuid)
+                if self.id.parse::<rbw::uuid::Uuid>() != Ok(*uuid)
                     && !match_str(&self.name, s)
                 {
                     return false;
@@ -2042,7 +2042,7 @@ fn find_entry(
 ) -> bin_error::Result<(rbw::db::Entry, DecryptedCipher)> {
     if let Needle::Uuid(uuid, s) = needle {
         for cipher in &db.entries {
-            if uuid::Uuid::parse_str(&cipher.id) == Ok(uuid) {
+            if cipher.id.parse::<rbw::uuid::Uuid>() == Ok(uuid) {
                 return Ok((cipher.clone(), decrypt_cipher(cipher)?));
             }
         }
@@ -4134,7 +4134,7 @@ mod test {
         folder: Option<&str>,
         uris: &[(&str, Option<rbw::api::UriMatchType>)],
     ) -> (rbw::db::Entry, DecryptedSearchCipher) {
-        let id = uuid::Uuid::new_v4();
+        let id = rbw::uuid::new_v4();
         (
             rbw::db::Entry {
                 id: id.to_string(),

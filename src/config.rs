@@ -229,7 +229,7 @@ pub async fn device_id(config: &Config) -> Result<String> {
         Ok(s.trim().to_string())
     } else {
         let id = config.device_id.as_ref().map_or_else(
-            || uuid::Uuid::new_v4().hyphenated().to_string(),
+            || crate::uuid::new_v4().to_string(),
             String::to_string,
         );
         let mut fh = tokio::fs::File::create(&file).await.map_err(|e| {

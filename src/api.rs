@@ -1,5 +1,3 @@
-// serde_repr generates some as conversions that we can't seem to silence from
-// here, unfortunately
 #![allow(clippy::as_conversions)]
 
 use crate::prelude::*;
@@ -12,15 +10,7 @@ use crate::json::{
     DeserializeJsonWithPath as _, DeserializeJsonWithPathAsync as _,
 };
 
-#[derive(
-    serde_repr::Serialize_repr,
-    serde_repr::Deserialize_repr,
-    Debug,
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum UriMatchType {
     Domain = 0,
@@ -29,6 +19,46 @@ pub enum UriMatchType {
     Exact = 3,
     RegularExpression = 4,
     Never = 5,
+}
+
+impl serde::Serialize for UriMatchType {
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let v: u8 = match self {
+            Self::Domain => 0,
+            Self::Host => 1,
+            Self::StartsWith => 2,
+            Self::Exact => 3,
+            Self::RegularExpression => 4,
+            Self::Never => 5,
+        };
+        serializer.serialize_u8(v)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for UriMatchType {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let v = u8::deserialize(deserializer)?;
+        match v {
+            0 => Ok(Self::Domain),
+            1 => Ok(Self::Host),
+            2 => Ok(Self::StartsWith),
+            3 => Ok(Self::Exact),
+            4 => Ok(Self::RegularExpression),
+            5 => Ok(Self::Never),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid UriMatchType: {v}"
+            ))),
+        }
+    }
 }
 
 impl std::fmt::Display for UriMatchType {
@@ -253,19 +283,43 @@ impl serde::Serialize for KdfType {
     }
 }
 
-#[derive(
-    serde_repr::Serialize_repr,
-    serde_repr::Deserialize_repr,
-    Debug,
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CipherRepromptType {
     None = 0,
     Password = 1,
+}
+
+impl serde::Serialize for CipherRepromptType {
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let v: u8 = match self {
+            Self::None => 0,
+            Self::Password => 1,
+        };
+        serializer.serialize_u8(v)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for CipherRepromptType {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let v = u8::deserialize(deserializer)?;
+        match v {
+            0 => Ok(Self::None),
+            1 => Ok(Self::Password),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid CipherRepromptType: {v}"
+            ))),
+        }
+    }
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -665,15 +719,7 @@ struct CipherSshKey {
     fingerprint: Option<String>,
 }
 
-#[derive(
-    serde_repr::Serialize_repr,
-    serde_repr::Deserialize_repr,
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum FieldType {
     Text = 0,
@@ -682,15 +728,43 @@ pub enum FieldType {
     Linked = 3,
 }
 
-#[derive(
-    serde_repr::Serialize_repr,
-    serde_repr::Deserialize_repr,
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-)]
+impl serde::Serialize for FieldType {
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let v: u16 = match self {
+            Self::Text => 0,
+            Self::Hidden => 1,
+            Self::Boolean => 2,
+            Self::Linked => 3,
+        };
+        serializer.serialize_u16(v)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for FieldType {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let v = u16::deserialize(deserializer)?;
+        match v {
+            0 => Ok(Self::Text),
+            1 => Ok(Self::Hidden),
+            2 => Ok(Self::Boolean),
+            3 => Ok(Self::Linked),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid FieldType: {v}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum LinkedIdType {
     LoginUsername = 100,
@@ -720,6 +794,88 @@ pub enum LinkedIdType {
     IdentityFirstName = 416,
     IdentityLastName = 417,
     IdentityFullName = 418,
+}
+
+impl serde::Serialize for LinkedIdType {
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let v: u16 = match self {
+            Self::LoginUsername => 100,
+            Self::LoginPassword => 101,
+            Self::CardCardholderName => 300,
+            Self::CardExpMonth => 301,
+            Self::CardExpYear => 302,
+            Self::CardCode => 303,
+            Self::CardBrand => 304,
+            Self::CardNumber => 305,
+            Self::IdentityTitle => 400,
+            Self::IdentityMiddleName => 401,
+            Self::IdentityAddress1 => 402,
+            Self::IdentityAddress2 => 403,
+            Self::IdentityAddress3 => 404,
+            Self::IdentityCity => 405,
+            Self::IdentityState => 406,
+            Self::IdentityPostalCode => 407,
+            Self::IdentityCountry => 408,
+            Self::IdentityCompany => 409,
+            Self::IdentityEmail => 410,
+            Self::IdentityPhone => 411,
+            Self::IdentitySsn => 412,
+            Self::IdentityUsername => 413,
+            Self::IdentityPassportNumber => 414,
+            Self::IdentityLicenseNumber => 415,
+            Self::IdentityFirstName => 416,
+            Self::IdentityLastName => 417,
+            Self::IdentityFullName => 418,
+        };
+        serializer.serialize_u16(v)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for LinkedIdType {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let v = u16::deserialize(deserializer)?;
+        match v {
+            100 => Ok(Self::LoginUsername),
+            101 => Ok(Self::LoginPassword),
+            300 => Ok(Self::CardCardholderName),
+            301 => Ok(Self::CardExpMonth),
+            302 => Ok(Self::CardExpYear),
+            303 => Ok(Self::CardCode),
+            304 => Ok(Self::CardBrand),
+            305 => Ok(Self::CardNumber),
+            400 => Ok(Self::IdentityTitle),
+            401 => Ok(Self::IdentityMiddleName),
+            402 => Ok(Self::IdentityAddress1),
+            403 => Ok(Self::IdentityAddress2),
+            404 => Ok(Self::IdentityAddress3),
+            405 => Ok(Self::IdentityCity),
+            406 => Ok(Self::IdentityState),
+            407 => Ok(Self::IdentityPostalCode),
+            408 => Ok(Self::IdentityCountry),
+            409 => Ok(Self::IdentityCompany),
+            410 => Ok(Self::IdentityEmail),
+            411 => Ok(Self::IdentityPhone),
+            412 => Ok(Self::IdentitySsn),
+            413 => Ok(Self::IdentityUsername),
+            414 => Ok(Self::IdentityPassportNumber),
+            415 => Ok(Self::IdentityLicenseNumber),
+            416 => Ok(Self::IdentityFirstName),
+            417 => Ok(Self::IdentityLastName),
+            418 => Ok(Self::IdentityFullName),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid LinkedIdType: {v}"
+            ))),
+        }
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -1768,4 +1924,114 @@ fn classify_login_error(error_res: &ConnectErrorRes, code: u16) -> Error {
 
     log::warn!("unexpected error received during login: {error_res:?}");
     Error::RequestFailed { status: code }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn roundtrip_u8<T>(variants: &[(T, u8)])
+    where
+        T: serde::Serialize
+            + for<'de> serde::Deserialize<'de>
+            + PartialEq
+            + std::fmt::Debug
+            + Copy,
+    {
+        for (variant, n) in variants {
+            let v = serde_json::to_value(variant).unwrap();
+            assert_eq!(v, serde_json::json!(n));
+            let back: T = serde_json::from_value(v).unwrap();
+            assert_eq!(&back, variant);
+        }
+    }
+
+    fn roundtrip_u16<T>(variants: &[(T, u16)])
+    where
+        T: serde::Serialize
+            + for<'de> serde::Deserialize<'de>
+            + PartialEq
+            + std::fmt::Debug
+            + Copy,
+    {
+        for (variant, n) in variants {
+            let v = serde_json::to_value(variant).unwrap();
+            assert_eq!(v, serde_json::json!(n));
+            let back: T = serde_json::from_value(v).unwrap();
+            assert_eq!(&back, variant);
+        }
+    }
+
+    #[test]
+    fn uri_match_type_roundtrip() {
+        roundtrip_u8(&[
+            (UriMatchType::Domain, 0),
+            (UriMatchType::Host, 1),
+            (UriMatchType::StartsWith, 2),
+            (UriMatchType::Exact, 3),
+            (UriMatchType::RegularExpression, 4),
+            (UriMatchType::Never, 5),
+        ]);
+        let err = serde_json::from_value::<UriMatchType>(serde_json::json!(99));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn cipher_reprompt_type_roundtrip() {
+        roundtrip_u8(&[
+            (CipherRepromptType::None, 0),
+            (CipherRepromptType::Password, 1),
+        ]);
+        let err =
+            serde_json::from_value::<CipherRepromptType>(serde_json::json!(9));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn field_type_roundtrip() {
+        roundtrip_u16(&[
+            (FieldType::Text, 0),
+            (FieldType::Hidden, 1),
+            (FieldType::Boolean, 2),
+            (FieldType::Linked, 3),
+        ]);
+        let err = serde_json::from_value::<FieldType>(serde_json::json!(999));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn linked_id_type_roundtrip() {
+        roundtrip_u16(&[
+            (LinkedIdType::LoginUsername, 100),
+            (LinkedIdType::LoginPassword, 101),
+            (LinkedIdType::CardCardholderName, 300),
+            (LinkedIdType::CardExpMonth, 301),
+            (LinkedIdType::CardExpYear, 302),
+            (LinkedIdType::CardCode, 303),
+            (LinkedIdType::CardBrand, 304),
+            (LinkedIdType::CardNumber, 305),
+            (LinkedIdType::IdentityTitle, 400),
+            (LinkedIdType::IdentityMiddleName, 401),
+            (LinkedIdType::IdentityAddress1, 402),
+            (LinkedIdType::IdentityAddress2, 403),
+            (LinkedIdType::IdentityAddress3, 404),
+            (LinkedIdType::IdentityCity, 405),
+            (LinkedIdType::IdentityState, 406),
+            (LinkedIdType::IdentityPostalCode, 407),
+            (LinkedIdType::IdentityCountry, 408),
+            (LinkedIdType::IdentityCompany, 409),
+            (LinkedIdType::IdentityEmail, 410),
+            (LinkedIdType::IdentityPhone, 411),
+            (LinkedIdType::IdentitySsn, 412),
+            (LinkedIdType::IdentityUsername, 413),
+            (LinkedIdType::IdentityPassportNumber, 414),
+            (LinkedIdType::IdentityLicenseNumber, 415),
+            (LinkedIdType::IdentityFirstName, 416),
+            (LinkedIdType::IdentityLastName, 417),
+            (LinkedIdType::IdentityFullName, 418),
+        ]);
+        let err =
+            serde_json::from_value::<LinkedIdType>(serde_json::json!(9999));
+        assert!(err.is_err());
+    }
 }

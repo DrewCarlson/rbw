@@ -6,9 +6,7 @@ pub trait DeserializeJsonWithPath {
 
 impl DeserializeJsonWithPath for String {
     fn json_with_path<T: serde::de::DeserializeOwned>(self) -> Result<T> {
-        let jd = &mut serde_json::Deserializer::from_str(&self);
-        serde_path_to_error::deserialize(jd)
-            .map_err(|source| Error::Json { source })
+        serde_json::from_str(&self).map_err(|source| Error::Json { source })
     }
 }
 
@@ -16,8 +14,7 @@ impl DeserializeJsonWithPath for reqwest::blocking::Response {
     fn json_with_path<T: serde::de::DeserializeOwned>(self) -> Result<T> {
         let bytes =
             self.bytes().map_err(|source| Error::Reqwest { source })?;
-        let jd = &mut serde_json::Deserializer::from_slice(&bytes);
-        serde_path_to_error::deserialize(jd)
+        serde_json::from_slice(&bytes)
             .map_err(|source| Error::Json { source })
     }
 }
@@ -37,8 +34,7 @@ impl DeserializeJsonWithPathAsync for reqwest::Response {
             .bytes()
             .await
             .map_err(|source| Error::Reqwest { source })?;
-        let jd = &mut serde_json::Deserializer::from_slice(&bytes);
-        serde_path_to_error::deserialize(jd)
+        serde_json::from_slice(&bytes)
             .map_err(|source| Error::Json { source })
     }
 }

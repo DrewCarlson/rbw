@@ -2,6 +2,7 @@ use crate::prelude::*;
 
 use aes::cipher::{
     BlockDecryptMut as _, BlockEncryptMut as _, KeyIvInit as _,
+    generic_array::GenericArray,
 };
 use hmac::Mac as _;
 use pkcs8::DecodePrivateKey as _;
@@ -99,12 +100,15 @@ impl CipherString {
     ) -> Result<Self> {
         let iv = random_iv();
 
-        let cipher = cbc::Encryptor::<aes::Aes256>::new(
+        let mut cipher = cbc::Encryptor::<aes::Aes256>::new(
             keys.enc_key().into(),
             iv.as_slice().into(),
         );
-        let ciphertext =
-            cipher.encrypt_padded_vec_mut::<block_padding::Pkcs7>(plaintext);
+        let mut ciphertext = plaintext.to_vec();
+        pkcs7_pad(&mut ciphertext, 16);
+        for chunk in ciphertext.chunks_exact_mut(16) {
+            cipher.encrypt_block_mut(GenericArray::from_mut_slice(chunk));
+        }
 
         let mut digest =
             hmac::Hmac::<sha2::Sha256>::new_from_slice(keys.mac_key())
@@ -131,15 +135,23 @@ impl CipherString {
             mac,
         } = self
         {
-            let cipher = decrypt_common_symmetric(
+            let mut cipher = decrypt_common_symmetric(
                 entry_key.unwrap_or(keys),
                 iv,
                 ciphertext,
                 mac.as_deref(),
             )?;
-            cipher
-                .decrypt_padded_vec_mut::<block_padding::Pkcs7>(ciphertext)
-                .map_err(|source| Error::Decrypt { source })
+            let mut buf = ciphertext.clone();
+            if buf.is_empty() || buf.len() % 16 != 0 {
+                return Err(Error::Padding);
+            }
+            for chunk in buf.chunks_exact_mut(16) {
+                cipher.decrypt_block_mut(GenericArray::from_mut_slice(chunk));
+            }
+            let unpadded_len =
+                pkcs7_unpad(&buf).ok_or(Error::Padding)?.len();
+            buf.truncate(unpadded_len);
+            Ok(buf)
         } else {
             Err(Error::InvalidCipherString {
                 reason:
@@ -161,15 +173,22 @@ impl CipherString {
         {
             let mut res = crate::locked::Vec::new();
             res.extend(ciphertext.iter().copied());
-            let cipher = decrypt_common_symmetric(
+            let mut cipher = decrypt_common_symmetric(
                 keys,
                 iv,
                 ciphertext,
                 mac.as_deref(),
             )?;
-            cipher
-                .decrypt_padded_mut::<block_padding::Pkcs7>(res.data_mut())
-                .map_err(|source| Error::Decrypt { source })?;
+            let data = res.data_mut();
+            if data.is_empty() || data.len() % 16 != 0 {
+                return Err(Error::Padding);
+            }
+            for chunk in data.chunks_exact_mut(16) {
+                cipher.decrypt_block_mut(GenericArray::from_mut_slice(chunk));
+            }
+            let unpadded_len =
+                pkcs7_unpad(data).ok_or(Error::Padding)?.len();
+            res.truncate(unpadded_len);
             Ok(res)
         } else {
             Err(Error::InvalidCipherString {
@@ -266,6 +285,14 @@ fn random_iv() -> Vec<u8> {
     iv
 }
 
+// PKCS#7: always append n bytes of value n, so block length is a multiple
+// of block_size and padding is unambiguously strippable.
+fn pkcs7_pad(buf: &mut Vec<u8>, block_size: usize) {
+    let pad_len = block_size - (buf.len() % block_size);
+    let pad_val = u8::try_from(pad_len).unwrap();
+    buf.resize(buf.len() + pad_len, pad_val);
+}
+
 // XXX this should ideally just be block_padding::Pkcs7::unpad, but i can't
 // figure out how to get the generic types to work out
 fn pkcs7_unpad(b: &[u8]) -> Option<&[u8]> {
@@ -312,4 +339,59 @@ fn test_pkcs7_unpad() {
         let got = pkcs7_unpad(input);
         assert_eq!(got, expected);
     }
+}
+
+#[test]
+fn test_pkcs7_pad() {
+    let tests: &[(&[u8], &[u8])] = &[
+        (&[], &[16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16]),
+        (&[0x69], &[0x69, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]),
+        (
+            &[
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+            ],
+            &[
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+            ],
+        ),
+    ];
+    for (input, expected) in tests {
+        let mut buf = input.to_vec();
+        pkcs7_pad(&mut buf, 16);
+        assert_eq!(&buf[..], *expected);
+        assert_eq!(pkcs7_unpad(&buf).unwrap(), *input);
+    }
+}
+
+#[cfg(test)]
+fn test_keys() -> crate::locked::Keys {
+    let mut v = crate::locked::Vec::new();
+    v.extend((0u8..64).map(|i| i));
+    crate::locked::Keys::new(v)
+}
+
+#[test]
+fn test_encrypt_decrypt_roundtrip() {
+    let keys = test_keys();
+    let plaintext = b"hello world, this is a test!";
+    let cs = CipherString::encrypt_symmetric(&keys, plaintext).unwrap();
+    let decrypted = cs.decrypt_symmetric(&keys, None).unwrap();
+    assert_eq!(&decrypted[..], plaintext);
+}
+
+#[test]
+fn test_encrypt_decrypt_block_boundary() {
+    let keys = test_keys();
+    // exactly one AES block; PKCS#7 must append a full block of 0x10 bytes.
+    let plaintext = b"0123456789abcdef";
+    assert_eq!(plaintext.len(), 16);
+    let cs = CipherString::encrypt_symmetric(&keys, plaintext).unwrap();
+    if let CipherString::Symmetric { ciphertext, .. } = &cs {
+        assert_eq!(ciphertext.len(), 32);
+    } else {
+        panic!("expected symmetric");
+    }
+    let decrypted = cs.decrypt_symmetric(&keys, None).unwrap();
+    assert_eq!(&decrypted[..], plaintext);
 }

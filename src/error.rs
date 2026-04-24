@@ -21,8 +21,8 @@ pub enum Error {
     #[error("failed to create sso callback server: {err}")]
     CreateSSOCallbackServer { err: std::io::Error },
 
-    #[error("failed to decrypt")]
-    Decrypt { source: block_padding::UnpadError },
+    #[error("failed to decrypt: {msg}")]
+    Decrypt { msg: String },
 
     #[error("failed to find free port in {range}")]
     FailedToFindFreePort { range: String },
@@ -90,9 +90,7 @@ pub enum Error {
     InvalidTwoFactorProvider { ty: String },
 
     #[error("failed to parse JSON")]
-    Json {
-        source: serde_path_to_error::Error<serde_json::Error>,
-    },
+    Json { source: serde_json::Error },
 
     #[error("failed to load config from {}", .file.display())]
     LoadConfig {
