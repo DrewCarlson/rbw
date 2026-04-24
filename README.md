@@ -168,6 +168,38 @@ mechanism on your bitwarden account to use rbw. It allows you to use rbw
 with a supported mechanism, and use other clients with you preferred
 2FA mechanism.
 
+## Signing git commits with rbw
+
+If you store an SSH key (Bitwarden cipher type "SSH Key") in your vault,
+`rbw-agent` acts as an SSH agent that can sign git commits and tags using
+OpenSSH's `sshsig` format (the one git uses when `gpg.format = ssh`).
+
+Point your shell at the agent and configure git:
+
+```sh
+export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/tmp}/rbw/ssh-agent-socket"
+
+git config --global gpg.format ssh
+# Use the public key you stored in Bitwarden under an entry named e.g. "git":
+git config --global user.signingkey "$(rbw ssh-public-key git)"
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+
+# Optional: populate the allowed_signers file for `git log --show-signature`:
+rbw ssh-allowed-signers > ~/.config/git/allowed_signers
+git config --global gpg.ssh.allowedSignersFile ~/.config/git/allowed_signers
+```
+
+Add a confirmation prompt before every signature (guards against a running
+process silently signing commits while the agent is unlocked):
+
+```sh
+rbw config set ssh_confirm_sign true
+```
+
+The pinentry dialog will display the entry name; accepting produces the
+signature, cancelling returns an error to git.
+
 ## Related projects
 
 * [rofi-rbw](https://github.com/fdw/rofi-rbw): A rofi frontend for Bitwarden

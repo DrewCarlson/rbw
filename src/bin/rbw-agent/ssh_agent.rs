@@ -62,12 +62,41 @@ impl ssh_agent_lib::agent::Session for SshAgent {
         let pubkey =
             ssh_agent_lib::ssh_key::PublicKey::new(request.pubkey, "");
 
-        let private_key =
+        let (private_key, entry_name) =
             crate::actions::find_ssh_private_key(self.state.clone(), pubkey)
                 .await
                 .map_err(|e| {
                     ssh_agent_lib::error::AgentError::Other(e.into())
                 })?;
+
+        // Optional confirm-on-sign. Reads both the config flag and the
+        // last-known pinentry environment from the shared state.
+        let (confirm_required, pinentry, environment) = {
+            let state = self.state.lock().await;
+            let config = rbw::config::Config::load().map_err(|e| {
+                ssh_agent_lib::error::AgentError::Other(e.into())
+            })?;
+            (
+                config.ssh_confirm_sign,
+                config.pinentry,
+                state.last_environment().clone(),
+            )
+        };
+        if confirm_required {
+            let ok = rbw::pinentry::confirm(
+                &pinentry,
+                "Sign",
+                &format!("rbw-agent wants to sign with key {entry_name:?}"),
+                &environment,
+            )
+            .await
+            .map_err(|e| ssh_agent_lib::error::AgentError::Other(e.into()))?;
+            if !ok {
+                return Err(ssh_agent_lib::error::AgentError::Other(
+                    "signature declined by user".into(),
+                ));
+            }
+        }
 
         match private_key.key_data() {
             ssh_agent_lib::ssh_key::private::KeypairData::Ed25519(key) => key

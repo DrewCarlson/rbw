@@ -312,6 +312,37 @@ impl RbwHarness {
             .unwrap_or_else(|e| panic!("spawn rbw {args:?}: {e}"))
     }
 
+    /// Replace the fake pinentry script so CONFIRM dialogs reply with an
+    /// Assuan error (user cancelled). GETPIN still returns the master
+    /// password so unlock flows keep working.
+    pub fn reject_confirm_prompts(&self) {
+        let script = format!(
+            "#!/bin/sh\n\
+             printf 'OK Pleased to meet you\\n'\n\
+             while IFS= read -r line; do\n\
+                 case \"$line\" in\n\
+                     GETPIN*)\n\
+                         printf 'D %s\\n' {pw}\n\
+                         printf 'OK\\n'\n\
+                         ;;\n\
+                     CONFIRM*)\n\
+                         printf 'ERR 83886179 canceled\\n'\n\
+                         ;;\n\
+                     BYE*)\n\
+                         printf 'OK closing connection\\n'\n\
+                         exit 0\n\
+                         ;;\n\
+                     *)\n\
+                         printf 'OK\\n'\n\
+                         ;;\n\
+                 esac\n\
+             done\n",
+            pw = shell_escape(&self.password),
+        );
+        std::fs::write(&self.pinentry_path, script)
+            .expect("rewrite pinentry");
+    }
+
     /// Same as `run` but asserts the command exited 0 and returns stdout as
     /// `String`. Dumps both streams plus agent logs into the panic message on
     /// failure.

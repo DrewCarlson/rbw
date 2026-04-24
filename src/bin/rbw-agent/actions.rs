@@ -906,7 +906,7 @@ pub async fn get_ssh_public_keys(
 pub async fn find_ssh_private_key(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
     request_public_key: ssh_agent_lib::ssh_key::PublicKey,
-) -> bin_error::Result<ssh_agent_lib::ssh_key::PrivateKey> {
+) -> bin_error::Result<(ssh_agent_lib::ssh_key::PrivateKey, String)> {
     let environment = {
         let state = state.lock().await;
         state.set_timeout();
@@ -960,10 +960,21 @@ pub async fn find_ssh_private_key(
                 )
                 .await?;
 
-                return ssh_agent_lib::ssh_key::PrivateKey::from_openssh(
+                let name_plaintext = decrypt_cipher(
+                    state.clone(),
+                    &environment,
+                    &entry.name,
+                    entry.key.as_deref(),
+                    entry.org_id.as_deref(),
+                )
+                .await
+                .unwrap_or_else(|_| "<unknown>".to_string());
+
+                let pk = ssh_agent_lib::ssh_key::PrivateKey::from_openssh(
                     private_key_plaintext,
                 )
-                .map_err(|e| bin_error::Error::Boxed(Box::new(e)));
+                .map_err(|e| bin_error::Error::Boxed(Box::new(e)))?;
+                return Ok((pk, name_plaintext));
             }
         }
     }

@@ -232,6 +232,25 @@ enum Opt {
     StopAgent,
 
     #[command(
+        name = "ssh-public-key",
+        about = "Print the OpenSSH public key of an SSH key entry"
+    )]
+    SshPublicKey {
+        #[command(flatten)]
+        find_args: FindArgs,
+    },
+
+    #[command(
+        name = "ssh-allowed-signers",
+        about = "Print an allowed_signers file for every SSH key in the vault",
+        long_about = "Print an allowed_signers file suitable for \
+            `ssh-keygen -Y verify`. Each line is `<email> <public-key>`. \
+            Pipe into a file and point git's \
+            `gpg.ssh.allowedSignersFile` at it."
+    )]
+    SshAllowedSigners,
+
+    #[command(
         name = "gen-completions",
         about = "Generate completion script for the given shell"
     )]
@@ -261,6 +280,8 @@ impl Opt {
             Self::Lock => "lock".to_string(),
             Self::Purge => "purge".to_string(),
             Self::StopAgent => "stop-agent".to_string(),
+            Self::SshPublicKey { .. } => "ssh-public-key".to_string(),
+            Self::SshAllowedSigners => "ssh-allowed-signers".to_string(),
             Self::GenCompletions { .. } => "gen-completions".to_string(),
         }
     }
@@ -435,6 +456,13 @@ fn main() {
         Opt::Lock => commands::lock(),
         Opt::Purge => commands::purge(),
         Opt::StopAgent => commands::stop_agent(),
+        Opt::SshPublicKey { find_args } => commands::ssh_public_key(
+            find_args.needle,
+            find_args.user.as_deref(),
+            find_args.folder.as_deref(),
+            find_args.ignorecase,
+        ),
+        Opt::SshAllowedSigners => commands::ssh_allowed_signers(),
         Opt::GenCompletions { shell } => {
             match shell {
                 CompletionShell::Bash => {

@@ -4,6 +4,78 @@ use std::convert::TryFrom as _;
 
 use tokio::io::AsyncWriteExt as _;
 
+/// Pop an Assuan CONFIRM dialog and return `Ok(true)` if the user accepted,
+/// `Ok(false)` if they cancelled, or an error if pinentry itself failed.
+pub async fn confirm(
+    pinentry: &str,
+    prompt: &str,
+    desc: &str,
+    environment: &crate::protocol::Environment,
+) -> Result<bool> {
+    let mut opts = tokio::process::Command::new(pinentry);
+    opts.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped());
+    let mut args = vec!["--timeout".into(), "0".into()];
+    if let Some(tty) = environment.tty() {
+        args.extend(["--ttyname".into(), tty.into()]);
+    }
+    let env_vars = environment.env_vars();
+    if let Some(display) =
+        env_vars.get(std::ffi::OsString::from("DISPLAY").as_os_str())
+    {
+        args.extend(["--display".into(), display.clone()]);
+    }
+    opts.args(args);
+    for env_var in &*crate::protocol::ENVIRONMENT_VARIABLES_OS {
+        if let Some(val) = env_vars.get(env_var) {
+            opts.env(env_var, val);
+        } else {
+            opts.env_remove(env_var);
+        }
+    }
+    opts.envs(env_vars);
+
+    let mut child = opts.spawn().map_err(|source| Error::Spawn { source })?;
+    let mut stdin = child.stdin.take().unwrap();
+    stdin
+        .write_all(b"SETTITLE rbw\n")
+        .await
+        .map_err(|source| Error::WriteStdin { source })?;
+    stdin
+        .write_all(format!("SETPROMPT {prompt}\n").as_bytes())
+        .await
+        .map_err(|source| Error::WriteStdin { source })?;
+    stdin
+        .write_all(format!("SETDESC {desc}\n").as_bytes())
+        .await
+        .map_err(|source| Error::WriteStdin { source })?;
+    stdin
+        .write_all(b"CONFIRM\n")
+        .await
+        .map_err(|source| Error::WriteStdin { source })?;
+    drop(stdin);
+
+    let mut out = Vec::new();
+    let mut stdout = child.stdout.take().unwrap();
+    tokio::io::AsyncReadExt::read_to_end(&mut stdout, &mut out)
+        .await
+        .map_err(|source| Error::PinentryReadOutput { source })?;
+    child
+        .wait()
+        .await
+        .map_err(|source| Error::PinentryWait { source })?;
+
+    // Three SETs + a CONFIRM. Accept => trailing "OK\n"; cancel => an ERR
+    // line (codes 83886179 or 83886194) after the SET lines' OKs. Treat
+    // any ERR line as "user said no" rather than surfacing it as a protocol
+    // failure, so callers just see a clean refusal.
+    let text = String::from_utf8_lossy(&out);
+    let has_err = text
+        .lines()
+        .any(|l| l.starts_with("ERR ") && l.contains("83886"));
+    Ok(!has_err)
+}
+
 pub async fn getpin(
     pinentry: &str,
     prompt: &str,
