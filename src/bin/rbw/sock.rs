@@ -2,6 +2,12 @@ use std::io::{BufRead as _, Write as _};
 
 use crate::bin_error::{self, ContextExt as _};
 
+/// Cap on the size of a single JSON-line response from the agent. 16 MiB
+/// is far beyond any real vault-entry payload; this just blocks a
+/// runaway or malicious agent from pushing the CLI into unbounded
+/// heap growth.
+const MAX_MESSAGE: u64 = 16 * 1024 * 1024;
+
 pub struct Sock(std::os::unix::net::UnixStream);
 
 impl Sock {
@@ -31,10 +37,16 @@ impl Sock {
 
     pub fn recv(&mut self) -> bin_error::Result<rbw::protocol::Response> {
         let Self(sock) = self;
-        let mut buf = std::io::BufReader::new(sock);
+        let limited = std::io::Read::take(&mut *sock, MAX_MESSAGE);
+        let mut buf = std::io::BufReader::new(limited);
         let mut line = String::new();
         buf.read_line(&mut line)
             .context("failed to read message from agent")?;
+        if !line.ends_with('\n') {
+            return Err(bin_error::Error::msg(format!(
+                "agent response exceeds {MAX_MESSAGE}-byte cap"
+            )));
+        }
         serde_json::from_str(&line)
             .context("failed to parse message from agent")
     }

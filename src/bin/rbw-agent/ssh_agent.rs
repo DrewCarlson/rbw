@@ -17,10 +17,7 @@ impl SshAgent {
 
     pub async fn run(self) -> crate::bin_error::Result<()> {
         let socket = rbw::dirs::ssh_agent_socket_file();
-
-        let _ = std::fs::remove_file(&socket); // Ignore error if it doesn't exist
-
-        let listener = tokio::net::UnixListener::bind(socket)?;
+        let listener = crate::sock::bind_atomic(&socket)?;
         ssh_agent_lib::agent::listen(listener, self)
             .await
             .map_err(|e| crate::bin_error::Error::Boxed(Box::new(e)))?;

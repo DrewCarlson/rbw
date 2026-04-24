@@ -48,19 +48,24 @@ async fn enforce_touchid_gate(
             "request denied: Touch ID not confirmed",
         ));
     }
-    if let Some(id) = session_id {
-        state.lock().await.record_touchid_session(id);
-    }
     // If keys were evicted on session expiry above, transparently
     // reload them from the Touch ID blob. The prompt the user just
     // confirmed also authorizes this Keychain retrieval (same
     // biometric session), so no double-prompt in practice.
+    //
+    // Record the session only *after* a successful unlock — if the
+    // unlock fails the user's biometric confirm didn't actually
+    // produce usable keys, so the next request should re-prompt
+    // rather than reuse this auth window.
     if state.lock().await.needs_unlock()
         && !try_unlock_via_touchid(state.clone()).await.is_unlocked()
     {
         return Err(bin_error::Error::msg(
             "Touch ID unlock failed after gate confirmation",
         ));
+    }
+    if let Some(id) = session_id {
+        state.lock().await.record_touchid_session(id);
     }
     Ok(())
 }

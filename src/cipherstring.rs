@@ -243,9 +243,11 @@ fn decrypt_common_symmetric(
         key.update(iv);
         key.update(ciphertext);
 
-        if key.verify(mac.into()).is_err() {
-            return Err(Error::InvalidMac);
-        }
+        // `verify_slice` uses `subtle::ConstantTimeEq` internally, which
+        // compares byte-by-byte without short-circuiting. Using it
+        // explicitly (rather than a naive `==`) blocks MAC-verification
+        // timing oracles on crafted ciphertexts.
+        key.verify_slice(mac).map_err(|_| Error::InvalidMac)?;
     }
 
     cbc::Decryptor::<aes::Aes256>::new_from_slices(keys.enc_key(), iv)
