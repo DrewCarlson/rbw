@@ -312,17 +312,50 @@ impl RbwHarness {
     }
 
     /// Same as `run` but asserts the command exited 0 and returns stdout as
-    /// `String`. Dumps both streams into the panic message on failure.
+    /// `String`. Dumps both streams plus agent logs into the panic message on
+    /// failure.
     pub fn check(&self, args: &[&str]) -> String {
         let out = self.run(args);
         assert!(
             out.status.success(),
-            "rbw {args:?} failed: status={:?}\nstdout={}\nstderr={}",
+            "rbw {args:?} failed: status={:?}\nstdout={}\nstderr={}\n{}",
             out.status,
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr),
+            self.agent_logs(),
         );
         String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    /// Snapshot of whatever rbw-agent has written to its redirected stdout/
+    /// stderr files. Useful for diagnosing failures since the daemonized
+    /// agent detaches from the test harness's stream capture.
+    pub fn agent_logs(&self) -> String {
+        let data_dir = if cfg!(target_os = "macos") {
+            self.home.join("Library/Application Support/rbw")
+        } else {
+            self.data_home.join("rbw")
+        };
+        let mut out = String::new();
+        for (name, rel) in
+            [("agent.err", "agent.err"), ("agent.out", "agent.out")]
+        {
+            let path = data_dir.join(rel);
+            match std::fs::read_to_string(&path) {
+                Ok(s) if !s.is_empty() => {
+                    out.push_str(&format!("--- {name} ({}) ---\n", path.display()));
+                    out.push_str(&s);
+                    if !s.ends_with('\n') {
+                        out.push('\n');
+                    }
+                }
+                _ => {}
+            }
+        }
+        if out.is_empty() {
+            out.push_str("(agent logs empty or missing)\n");
+        }
+        out
     }
 
     /// Run `rbw <args...>` feeding `stdin_data` on standard input.

@@ -104,4 +104,4 @@ jobs:
           RUST_BACKTRACE: 1
         run: |
           export VAULTWARDEN_BIN="$HOME/.cargo/bin/vaultwarden"
-          cargo test --test e2e -- --ignored --test-threads=1 --nocapture
+          cargo test --test e2e -- --ignored --nocapture

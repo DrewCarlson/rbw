@@ -114,7 +114,10 @@ fn data_dir() -> std::path::PathBuf {
 }
 
 fn runtime_dir() -> std::path::PathBuf {
-    #[cfg(not(target_os = "macos"))]
+    // Honor XDG_RUNTIME_DIR on all platforms when explicitly set. macOS has
+    // no native equivalent, but respecting the override lets tests and
+    // advanced users isolate per-instance sockets; falls through to a
+    // $TMPDIR-based path when unset.
     if let Some(d) = std::env::var_os("XDG_RUNTIME_DIR") {
         if std::path::Path::new(&d).is_absolute() {
             return std::path::PathBuf::from(d).join(profile());
