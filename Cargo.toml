@@ -89,6 +89,25 @@ arboard = { version = "3.6.1", default-features = false, features = [
     "wayland-data-control",
 ], optional = true }
 
+# Integration tests (`tests/e2e.rs`) only use crates already present in
+# `[dependencies]`, so no new crates are introduced here. The entries below
+# exist so that the test binary links against them explicitly rather than
+# relying on transitive re-exports from the `rbw` library crate.
+[dev-dependencies]
+tempfile = "3.24.0"
+reqwest = { version = "0.12.28", default-features = false, features = [
+    "blocking",
+    "json",
+    "rustls-tls-native-roots",
+] }
+rsa = "0.9.9"
+# `rsa` 0.9 pulls in rand_core 0.6, which is compatible with the older `rand`
+# 0.8 shim we already keep in the main dep tree as `rand_8`. Re-declared here
+# so the test binary links against it without relying on transitive resolve.
+rand_8 = { package = "rand", version = "0.8.5" }
+base64 = "0.22.1"
+serde_json = "1.0.147"
+
 [features]
 default = ["clipboard"]
 clipboard = ["arboard"]
