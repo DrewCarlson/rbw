@@ -18,11 +18,47 @@ impl SshAgent {
     pub async fn run(self) -> crate::bin_error::Result<()> {
         let socket = rbw::dirs::ssh_agent_socket_file();
         let listener = crate::sock::bind_atomic(&socket)?;
-        ssh_agent_lib::agent::listen(listener, self)
+        ssh_agent_lib::agent::listen(UidFilteredUnixListener(listener), self)
             .await
             .map_err(|e| crate::bin_error::Error::Boxed(Box::new(e)))?;
 
         Ok(())
+    }
+}
+
+/// Wraps `UnixListener` so each accepted connection is peer-uid-checked
+/// before being handed to `ssh-agent-lib`. Mismatched peers are logged
+/// and the socket is dropped; we loop back to accept so the agent keeps
+/// running.
+// The blanket `Agent<UnixListener> for T: Session + Clone` shipped by
+// ssh-agent-lib only covers the concrete `UnixListener` type, so we
+// have to restate it for our filtered wrapper — otherwise `listen`
+// can't resolve a session factory.
+impl ssh_agent_lib::agent::Agent<UidFilteredUnixListener> for SshAgent {
+    fn new_session(
+        &mut self,
+        _socket: &tokio::net::UnixStream,
+    ) -> impl ssh_agent_lib::agent::Session {
+        self.clone()
+    }
+}
+
+#[derive(Debug)]
+struct UidFilteredUnixListener(tokio::net::UnixListener);
+
+#[ssh_agent_lib::async_trait]
+impl ssh_agent_lib::agent::ListeningSocket for UidFilteredUnixListener {
+    type Stream = tokio::net::UnixStream;
+    async fn accept(&mut self) -> std::io::Result<Self::Stream> {
+        loop {
+            let (stream, _addr) = self.0.accept().await?;
+            match crate::sock::check_peer_uid(&stream) {
+                Ok(()) => return Ok(stream),
+                Err(e) => {
+                    log::warn!("ssh-agent: rejecting connection: {e:#}");
+                }
+            }
+        }
     }
 }
 

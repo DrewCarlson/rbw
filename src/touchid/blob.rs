@@ -47,6 +47,8 @@ impl Blob {
     }
 
     pub fn save(&self) -> Result<(), RbwError> {
+        use std::io::Write as _;
+        use std::os::unix::fs::OpenOptionsExt as _;
         let path = Self::path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|source| {
@@ -58,7 +60,17 @@ impl Blob {
         }
         let json = serde_json::to_string(self)
             .map_err(|source| RbwError::Json { source })?;
-        std::fs::write(&path, json)
+        let mut fh = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)
+            .map_err(|source| RbwError::SaveConfig {
+                source,
+                file: path.clone(),
+            })?;
+        fh.write_all(json.as_bytes())
             .map_err(|source| RbwError::SaveConfig { source, file: path })?;
         Ok(())
     }

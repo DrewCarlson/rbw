@@ -20,7 +20,7 @@ fn open_and_lock_pidfile() -> bin_error::Result<std::fs::File> {
         .write(true)
         .create(true)
         .truncate(false)
-        .mode(0o666)
+        .mode(0o600)
         .open(rbw::dirs::pid_file())
         .context("failed to open pid file")?;
     rustix::fs::flock(

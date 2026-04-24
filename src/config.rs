@@ -157,6 +157,7 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
+        use std::os::unix::fs::OpenOptionsExt as _;
         let file = crate::dirs::config_file();
         // unwrap is safe here because Self::filename is explicitly
         // constructed as a filename in a directory
@@ -166,12 +167,16 @@ impl Config {
                 file: file.clone(),
             },
         )?;
-        let mut fh = std::fs::File::create(&file).map_err(|source| {
-            Error::SaveConfig {
+        let mut fh = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&file)
+            .map_err(|source| Error::SaveConfig {
                 source,
                 file: file.clone(),
-            }
-        })?;
+            })?;
         fh.write_all(
             serde_json::to_string(self)
                 .map_err(|source| Error::SaveConfigJson {
@@ -281,12 +286,17 @@ pub async fn device_id(config: &Config) -> Result<String> {
             || crate::uuid::new_v4().to_string(),
             String::to_string,
         );
-        let mut fh = tokio::fs::File::create(&file).await.map_err(|e| {
-            Error::LoadDeviceId {
+        let mut fh = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&file)
+            .await
+            .map_err(|e| Error::LoadDeviceId {
                 source: e,
                 file: file.clone(),
-            }
-        })?;
+            })?;
         fh.write_all(id.as_bytes()).await.map_err(|e| {
             Error::LoadDeviceId {
                 source: e,

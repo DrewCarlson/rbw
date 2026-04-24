@@ -64,6 +64,40 @@ impl Sock {
     }
 }
 
+/// Verify that the peer connected to `stream` is running as the same
+/// uid as this process. Unix sockets in a 0o700 runtime dir already
+/// block cross-user access at the filesystem layer; this is
+/// belt-and-braces for the case where someone loosens those dir
+/// permissions, mounts the path into a sandbox, or passes the
+/// connected fd across a privilege boundary. Rejects gracefully (error
+/// return, no panic) so the accept loop stays up.
+pub fn check_peer_uid(
+    stream: &tokio::net::UnixStream,
+) -> bin_error::Result<()> {
+    use std::os::unix::io::AsRawFd as _;
+    let fd = stream.as_raw_fd();
+    let mut peer_uid: libc::uid_t = u32::MAX;
+    let mut peer_gid: libc::gid_t = u32::MAX;
+    // SAFETY: we own a valid UnixStream fd for the duration of this
+    // call; getpeereid writes only to the two out-params we just
+    // stack-allocated.
+    let rc =
+        unsafe { libc::getpeereid(fd, &raw mut peer_uid, &raw mut peer_gid) };
+    if rc != 0 {
+        return Err(bin_error::Error::from(std::io::Error::last_os_error()))
+            .context("failed to read peer uid");
+    }
+    // SAFETY: getuid can't fail.
+    let self_uid = unsafe { libc::getuid() };
+    if peer_uid != self_uid {
+        return Err(bin_error::Error::msg(format!(
+            "peer uid {peer_uid} does not match agent uid {self_uid}; \
+             refusing connection"
+        )));
+    }
+    Ok(())
+}
+
 pub fn listen() -> bin_error::Result<tokio::net::UnixListener> {
     let path = rbw::dirs::socket_file();
     let sock = bind_atomic(&path).context("failed to listen on socket")?;

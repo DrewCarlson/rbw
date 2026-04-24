@@ -237,6 +237,7 @@ impl Db {
 
     // XXX need to make this atomic
     pub fn save(&self, server: &str, email: &str) -> Result<()> {
+        use std::os::unix::fs::OpenOptionsExt as _;
         let file = crate::dirs::db_file(server, email);
         // unwrap is safe here because Self::filename is explicitly
         // constructed as a filename in a directory
@@ -246,8 +247,13 @@ impl Db {
                 file: file.clone(),
             },
         )?;
-        let mut fh =
-            std::fs::File::create(&file).map_err(|source| Error::SaveDb {
+        let mut fh = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&file)
+            .map_err(|source| Error::SaveDb {
                 source,
                 file: file.clone(),
             })?;
@@ -274,12 +280,16 @@ impl Db {
                 source,
                 file: file.clone(),
             })?;
-        let mut fh =
-            tokio::fs::File::create(&file).await.map_err(|source| {
-                Error::SaveDbAsync {
-                    source,
-                    file: file.clone(),
-                }
+        let mut fh = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&file)
+            .await
+            .map_err(|source| Error::SaveDbAsync {
+                source,
+                file: file.clone(),
             })?;
         fh.write_all(
             serde_json::to_string(self)

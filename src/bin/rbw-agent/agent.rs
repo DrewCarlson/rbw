@@ -66,9 +66,13 @@ impl Agent {
         while let Some(event) = stream.next().await {
             match event {
                 Event::Request(res) => {
-                    let mut sock = crate::sock::Sock::new(
-                        res.context("failed to accept incoming connection")?,
-                    );
+                    let stream =
+                        res.context("failed to accept incoming connection")?;
+                    if let Err(e) = crate::sock::check_peer_uid(&stream) {
+                        log::warn!("rejecting connection: {e:#}");
+                        continue;
+                    }
+                    let mut sock = crate::sock::Sock::new(stream);
                     let state = self.state.clone();
                     tokio::spawn(async move {
                         let res =
