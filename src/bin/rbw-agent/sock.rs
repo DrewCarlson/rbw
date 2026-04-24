@@ -94,7 +94,7 @@ pub fn check_peer_uid(
 /// suit, so we call it directly). `getpeereid` is the BSD / macOS
 /// idiom.
 #[cfg(any(target_os = "linux", target_os = "android"))]
-fn peer_uid(fd: std::os::unix::io::RawFd) -> std::io::Result<u32> {
+fn peer_ucred(fd: std::os::unix::io::RawFd) -> std::io::Result<libc::ucred> {
     let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
     let mut len = u32::try_from(std::mem::size_of::<libc::ucred>())
         .expect("ucred size fits in socklen_t");
@@ -112,7 +112,21 @@ fn peer_uid(fd: std::os::unix::io::RawFd) -> std::io::Result<u32> {
     if rc != 0 {
         return Err(std::io::Error::last_os_error());
     }
-    Ok(cred.uid)
+    Ok(cred)
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn peer_uid(fd: std::os::unix::io::RawFd) -> std::io::Result<u32> {
+    peer_ucred(fd).map(|c| c.uid)
+}
+
+/// Peer PID of a Unix-socket fd. Best effort — returns `None` if the
+/// platform doesn't expose it (or if the syscall fails). Used only for
+/// building a human-readable description of which client is making a
+/// request; never for authorization.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub fn peer_pid(fd: std::os::unix::io::RawFd) -> Option<i32> {
+    peer_ucred(fd).ok().map(|c| c.pid)
 }
 
 #[cfg(any(
@@ -133,6 +147,43 @@ fn peer_uid(fd: std::os::unix::io::RawFd) -> std::io::Result<u32> {
         return Err(std::io::Error::last_os_error());
     }
     Ok(uid)
+}
+
+/// macOS exposes the peer pid via `LOCAL_PEERPID` (level `SOL_LOCAL`,
+/// which is `0` for `AF_UNIX`). Both constants are stable in Darwin's
+/// `sys/un.h`. Best effort — returns `None` on error, since this is
+/// only used for the human-readable prompt description.
+#[cfg(target_os = "macos")]
+pub fn peer_pid(fd: std::os::unix::io::RawFd) -> Option<i32> {
+    // From <sys/un.h>: #define LOCAL_PEERPID 2, SOL_LOCAL = 0.
+    const SOL_LOCAL: libc::c_int = 0;
+    const LOCAL_PEERPID: libc::c_int = 2;
+    let mut pid: libc::pid_t = 0;
+    let mut len = u32::try_from(std::mem::size_of::<libc::pid_t>())
+        .expect("pid_t fits in socklen_t");
+    // SAFETY: `fd` is a valid Unix-socket fd; pid/len are stack-local.
+    let rc = unsafe {
+        libc::getsockopt(
+            fd,
+            SOL_LOCAL,
+            LOCAL_PEERPID,
+            std::ptr::from_mut::<libc::pid_t>(&mut pid).cast(),
+            &raw mut len,
+        )
+    };
+    if rc != 0 {
+        return None;
+    }
+    Some(pid)
+}
+
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "macos"
+)))]
+pub fn peer_pid(_fd: std::os::unix::io::RawFd) -> Option<i32> {
+    None
 }
 
 pub fn listen() -> bin_error::Result<tokio::net::UnixListener> {

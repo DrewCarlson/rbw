@@ -26,10 +26,17 @@ impl SshAgent {
     }
 }
 
-/// Wraps `UnixListener` so each accepted connection is peer-uid-checked
-/// before being handed to `ssh-agent-lib`. Mismatched peers are logged
-/// and the socket is dropped; we loop back to accept so the agent keeps
-/// running.
+/// Per-connection ssh-agent session. Carries a human-readable `peer`
+/// description (program name + pid) so the Touch ID / pinentry prompts
+/// tell the user *which* local client is requesting the signature,
+/// instead of the generic "rbw-agent wants to sign with …". The peer
+/// string is never used for authorization — it's diagnostic/UX only.
+#[derive(Clone)]
+pub struct SshSession {
+    state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
+    peer: String,
+}
+
 // The blanket `Agent<UnixListener> for T: Session + Clone` shipped by
 // ssh-agent-lib only covers the concrete `UnixListener` type, so we
 // have to restate it for our filtered wrapper — otherwise `listen`
@@ -37,10 +44,85 @@ impl SshAgent {
 impl ssh_agent_lib::agent::Agent<UidFilteredUnixListener> for SshAgent {
     fn new_session(
         &mut self,
-        _socket: &tokio::net::UnixStream,
+        socket: &tokio::net::UnixStream,
     ) -> impl ssh_agent_lib::agent::Session {
-        self.clone()
+        use std::os::unix::io::AsRawFd as _;
+        let peer = describe_peer(socket.as_raw_fd());
+        log::debug!("ssh-agent: accepted connection from {peer}");
+        SshSession {
+            state: self.state.clone(),
+            peer,
+        }
     }
+}
+
+/// Build a "`<program>` (pid `<pid>`)" description of the peer on a
+/// connected Unix-socket fd. Entirely best-effort: if any lookup fails
+/// we substitute an "unknown" placeholder.
+fn describe_peer(fd: std::os::unix::io::RawFd) -> String {
+    let Some(pid) = crate::sock::peer_pid(fd) else {
+        return "unknown client".to_string();
+    };
+    let name = peer_program_name(pid).unwrap_or_else(|| "<unknown>".into());
+    format!("{name} (pid {pid})")
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn peer_program_name(pid: i32) -> Option<String> {
+    // /proc/<pid>/comm holds the `TASK_COMM_LEN`-truncated program
+    // name (no path). Good enough for a prompt.
+    let raw = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn peer_program_name(pid: i32) -> Option<String> {
+    // libc::proc_pidpath fills a caller-provided buffer with the
+    // executable's full path. Returns the number of bytes written, or
+    // a negative value on error.
+    // `PROC_PIDPATHINFO_MAXSIZE` is Darwin-defined as 4 * `MAXPATHLEN`
+    // (= 4096); it fits in a `usize` but is typed `c_int`, so the
+    // widening needs an explicit allow for the `as_conversions` lint.
+    #[allow(clippy::as_conversions)]
+    const BUF_LEN: usize = libc::PROC_PIDPATHINFO_MAXSIZE as usize;
+    let mut buf = [0u8; BUF_LEN];
+    // SAFETY: buf is stack-allocated of the documented size;
+    // proc_pidpath writes at most `buf.len()` bytes.
+    let written = unsafe {
+        libc::proc_pidpath(
+            pid,
+            buf.as_mut_ptr().cast(),
+            u32::try_from(buf.len()).ok()?,
+        )
+    };
+    if written <= 0 {
+        return None;
+    }
+    let n = usize::try_from(written).ok()?;
+    let path = std::str::from_utf8(&buf[..n]).ok()?;
+    // Collapse to the basename for the prompt; the full path is
+    // noise most of the time.
+    Some(
+        std::path::Path::new(path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(path)
+            .to_string(),
+    )
+}
+
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "macos"
+)))]
+fn peer_program_name(_pid: i32) -> Option<String> {
+    None
 }
 
 #[derive(Debug)]
@@ -63,7 +145,7 @@ impl ssh_agent_lib::agent::ListeningSocket for UidFilteredUnixListener {
 }
 
 #[ssh_agent_lib::async_trait]
-impl ssh_agent_lib::agent::Session for SshAgent {
+impl ssh_agent_lib::agent::Session for SshSession {
     async fn request_identities(
         &mut self,
     ) -> Result<
@@ -111,8 +193,9 @@ impl ssh_agent_lib::agent::Session for SshAgent {
             .map_or(rbw::touchid::Gate::Off, |c| c.touchid_gate);
         if rbw::touchid::gate_applies(gate, rbw::touchid::Kind::SshSign) {
             let ok = rbw::touchid::require_presence(&format!(
-                "rbw-agent: sign with SSH key {name:?}",
-                name = located.name
+                "{peer} wants to sign with SSH key {name:?}",
+                peer = self.peer,
+                name = located.name,
             ))
             .await
             .map_err(|e| ssh_agent_lib::error::AgentError::Other(e.into()))?;
@@ -141,8 +224,9 @@ impl ssh_agent_lib::agent::Session for SshAgent {
                 &pinentry,
                 "Sign",
                 &format!(
-                    "rbw-agent wants to sign with key {name:?}",
-                    name = located.name
+                    "{peer} wants to sign with key {name:?}",
+                    peer = self.peer,
+                    name = located.name,
                 ),
                 &environment,
             )
