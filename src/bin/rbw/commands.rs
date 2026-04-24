@@ -3270,6 +3270,40 @@ mod test {
     use super::*;
 
     #[test]
+    fn format_rfc3339_epoch() {
+        let out = format_rfc3339(std::time::UNIX_EPOCH);
+        assert_eq!(out, "1970-01-01T00:00:00.000000000Z");
+    }
+
+    #[test]
+    fn format_rfc3339_known_dates() {
+        // Cross-check a handful of known timestamps. Values are `date -u -d …`
+        // on a Linux reference host.
+        let cases = &[
+            // 2000-01-01 00:00:00 UTC
+            (946_684_800_u64, "2000-01-01T00:00:00.000000000Z"),
+            // 2024-02-29 12:34:56 UTC (leap-day sanity)
+            (1_709_210_096_u64, "2024-02-29T12:34:56.000000000Z"),
+            // 2038-01-19 03:14:07 UTC (signed-32 epoch boundary)
+            (2_147_483_647_u64, "2038-01-19T03:14:07.000000000Z"),
+            // 2100-03-01 00:00:00 UTC (non-leap century)
+            (4_107_542_400_u64, "2100-03-01T00:00:00.000000000Z"),
+        ];
+        for (secs, expected) in cases {
+            let t =
+                std::time::UNIX_EPOCH + std::time::Duration::from_secs(*secs);
+            assert_eq!(&format_rfc3339(t), expected, "secs={secs}");
+        }
+    }
+
+    #[test]
+    fn format_rfc3339_preserves_subsec_nanos() {
+        let t = std::time::UNIX_EPOCH
+            + std::time::Duration::new(1_700_000_000, 123_456_789);
+        assert_eq!(format_rfc3339(t), "2023-11-14T22:13:20.123456789Z");
+    }
+
+    #[test]
     fn test_find_entry() {
         let entries = &[
             make_entry("github", Some("foo"), None, &[]),
