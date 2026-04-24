@@ -21,16 +21,20 @@ fn large_notes_survive_roundtrip() {
     let harness = RbwHarness::new(&server, email, password);
     harness.login_and_unlock();
 
-    // ~8 KiB of distinctive content: numbered lines so a truncation
-    // bug shows up as a missing final line rather than silent pass.
+    // Vaultwarden caps the cipher `notes` field at 10 000 chars, so we
+    // stay just under that while still comfortably exceeding the
+    // `locked::FixedVec` 4 KiB password buffer and an AES block. 180
+    // numbered lines × ~48 chars ≈ 8.6 KiB — a truncation bug here
+    // surfaces as a missing `line 0179:` at the tail.
     let mut notes = String::new();
-    for i in 0..256 {
+    for i in 0..180 {
         writeln!(notes, "line {i:04}: abcdefghijklmnopqrstuvwxyz0123456789")
             .unwrap();
     }
     assert!(
-        notes.len() > 8 * 1024,
-        "test needs >8 KiB of notes for this to be meaningful"
+        notes.len() > 4 * 1024 && notes.len() < 10_000,
+        "test needs >4 KiB and <10 KiB of notes (vaultwarden cap), got {}",
+        notes.len()
     );
 
     let mut stdin = Vec::new();
@@ -53,7 +57,7 @@ fn large_notes_survive_roundtrip() {
         full.len()
     );
     assert!(
-        full.contains("line 0255:"),
+        full.contains("line 0179:"),
         "last notes line missing; got {} bytes (truncation somewhere?)",
         full.len()
     );

@@ -42,23 +42,27 @@ fn db_file_contains_ciphertext_not_plaintext() {
                 .unwrap_or_else(|| panic!("{k} not in harness env")),
         )
     };
-    let data_dir = if cfg!(target_os = "macos") {
-        get("HOME").join("Library/Application Support/rbw")
+    // `rbw::dirs::db_file()` resolves under `cache_dir` — `XDG_CACHE_HOME`
+    // on Linux, `$HOME/Library/Caches/rbw` on macOS. The filename is
+    // `<urlencoded-server>:<email>.json` (no `db_` prefix).
+    let cache_dir = if cfg!(target_os = "macos") {
+        get("HOME").join("Library/Caches/rbw")
     } else {
-        get("XDG_DATA_HOME").join("rbw")
+        get("XDG_CACHE_HOME").join("rbw")
     };
 
-    let db_path = std::fs::read_dir(&data_dir)
-        .expect("read data_dir")
+    let db_path = std::fs::read_dir(&cache_dir)
+        .unwrap_or_else(|e| panic!("read {}: {e}", cache_dir.display()))
         .filter_map(Result::ok)
         .map(|e| e.path())
         .find(|p| {
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            name.starts_with("db_")
-                && p.extension().and_then(|e| e.to_str()) == Some("json")
+            p.extension().and_then(|e| e.to_str()) == Some("json")
+                && p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.contains(':'))
         })
         .unwrap_or_else(|| {
-            panic!("no db_*.json under {}", data_dir.display())
+            panic!("no *.json db cache under {}", cache_dir.display())
         });
 
     let raw = std::fs::read(&db_path).expect("read db");

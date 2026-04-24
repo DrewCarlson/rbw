@@ -157,7 +157,7 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
-        use std::os::unix::fs::OpenOptionsExt as _;
+        use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
         let file = crate::dirs::config_file();
         // unwrap is safe here because Self::filename is explicitly
         // constructed as a filename in a directory
@@ -173,6 +173,14 @@ impl Config {
             .truncate(true)
             .mode(0o600)
             .open(&file)
+            .map_err(|source| Error::SaveConfig {
+                source,
+                file: file.clone(),
+            })?;
+        // `OpenOptions::mode` only applies on file creation; if the
+        // file already exists (e.g. a user created it with a looser
+        // mode) we still want to tighten it every time rbw writes.
+        fh.set_permissions(std::fs::Permissions::from_mode(0o600))
             .map_err(|source| Error::SaveConfig {
                 source,
                 file: file.clone(),
@@ -282,6 +290,7 @@ pub async fn device_id(config: &Config) -> Result<String> {
             })?;
         Ok(s.trim().to_string())
     } else {
+        use std::os::unix::fs::PermissionsExt as _;
         let id = config.device_id.as_ref().map_or_else(
             || crate::uuid::new_v4().to_string(),
             String::to_string,
@@ -292,6 +301,15 @@ pub async fn device_id(config: &Config) -> Result<String> {
             .truncate(true)
             .mode(0o600)
             .open(&file)
+            .await
+            .map_err(|e| Error::LoadDeviceId {
+                source: e,
+                file: file.clone(),
+            })?;
+        // `OpenOptions::mode` only applies on create; tighten
+        // unconditionally so a pre-existing loose-mode file gets
+        // corrected on the next write.
+        fh.set_permissions(std::fs::Permissions::from_mode(0o600))
             .await
             .map_err(|e| Error::LoadDeviceId {
                 source: e,

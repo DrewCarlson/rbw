@@ -48,7 +48,7 @@ impl Blob {
 
     pub fn save(&self) -> Result<(), RbwError> {
         use std::io::Write as _;
-        use std::os::unix::fs::OpenOptionsExt as _;
+        use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
         let path = Self::path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|source| {
@@ -66,6 +66,11 @@ impl Blob {
             .truncate(true)
             .mode(0o600)
             .open(&path)
+            .map_err(|source| RbwError::SaveConfig {
+                source,
+                file: path.clone(),
+            })?;
+        fh.set_permissions(std::fs::Permissions::from_mode(0o600))
             .map_err(|source| RbwError::SaveConfig {
                 source,
                 file: path.clone(),

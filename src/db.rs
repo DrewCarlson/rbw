@@ -237,7 +237,7 @@ impl Db {
 
     // XXX need to make this atomic
     pub fn save(&self, server: &str, email: &str) -> Result<()> {
-        use std::os::unix::fs::OpenOptionsExt as _;
+        use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
         let file = crate::dirs::db_file(server, email);
         // unwrap is safe here because Self::filename is explicitly
         // constructed as a filename in a directory
@@ -257,6 +257,11 @@ impl Db {
                 source,
                 file: file.clone(),
             })?;
+        fh.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(|source| Error::SaveDb {
+                source,
+                file: file.clone(),
+            })?;
         fh.write_all(
             serde_json::to_string(self)
                 .map_err(|source| Error::SaveDbJson {
@@ -271,6 +276,7 @@ impl Db {
 
     // XXX need to make this atomic
     pub async fn save_async(&self, server: &str, email: &str) -> Result<()> {
+        use std::os::unix::fs::PermissionsExt as _;
         let file = crate::dirs::db_file(server, email);
         // unwrap is safe here because Self::filename is explicitly
         // constructed as a filename in a directory
@@ -286,6 +292,12 @@ impl Db {
             .truncate(true)
             .mode(0o600)
             .open(&file)
+            .await
+            .map_err(|source| Error::SaveDbAsync {
+                source,
+                file: file.clone(),
+            })?;
+        fh.set_permissions(std::fs::Permissions::from_mode(0o600))
             .await
             .map_err(|source| Error::SaveDbAsync {
                 source,

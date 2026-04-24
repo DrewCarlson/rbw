@@ -42,10 +42,13 @@ fn sensitive_files_and_dirs_have_tight_modes() {
     } else {
         get("XDG_CONFIG_HOME").join("rbw")
     };
-    let data_abs = if cfg!(target_os = "macos") {
-        get("HOME").join("Library/Application Support/rbw")
+    // db cache lives in `cache_dir` (XDG_CACHE_HOME on Linux,
+    // `~/Library/Caches/rbw` on macOS), not `data_dir`. Its filename
+    // is `<server>:<email>.json`.
+    let cache_abs = if cfg!(target_os = "macos") {
+        get("HOME").join("Library/Caches/rbw")
     } else {
-        get("XDG_DATA_HOME").join("rbw")
+        get("XDG_CACHE_HOME").join("rbw")
     };
 
     let check_mode = |path: &std::path::Path, expected: u32| {
@@ -60,24 +63,32 @@ fn sensitive_files_and_dirs_have_tight_modes() {
         );
     };
 
+    // Trigger a rbw-driven `Config::save()` so we verify rbw's writer
+    // enforces 0o600 even if some earlier process (here: the harness
+    // itself) pre-created config.json with a looser mode.
+    harness.check(&["config", "set", "lock_timeout", "1800"]);
+
     // Sensitive files must be 0o600 regardless of caller umask.
     check_mode(&cfg_abs.join("config.json"), 0o600);
-    // db.json filename is `db_<server-slug>_<email>.json`; find via
-    // directory listing so we don't have to reconstruct the slug.
-    let db_file = std::fs::read_dir(&data_abs)
-        .expect("read data_dir")
+    // db cache filename is `<urlencoded-server>:<email>.json`. Find via
+    // a directory scan so we don't have to reconstruct the slug.
+    let db_file = std::fs::read_dir(&cache_abs)
+        .unwrap_or_else(|e| panic!("read {}: {e}", cache_abs.display()))
         .filter_map(Result::ok)
         .map(|e| e.path())
         .find(|p| {
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            name.starts_with("db_")
-                && p.extension().and_then(|e| e.to_str()) == Some("json")
+            p.extension().and_then(|e| e.to_str()) == Some("json")
+                && p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.contains(':'))
         })
-        .expect("expected a db_*.json file after sync");
+        .unwrap_or_else(|| {
+            panic!("expected a db cache file under {}", cache_abs.display())
+        });
     check_mode(&db_file, 0o600);
 
     // Enclosing dirs should be 0o700. rbw::dirs::make_all() creates
     // these during startup.
     check_mode(&cfg_abs, 0o700);
-    check_mode(&data_abs, 0o700);
+    check_mode(&cache_abs, 0o700);
 }
