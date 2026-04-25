@@ -37,15 +37,15 @@ bwx setup-macos               # LaunchAgents + SSH_AUTH_SOCK for GUI apps
 
 ### Everywhere else
 
-| Platform        | Command                                   |
-|-----------------|-------------------------------------------|
-| Arch            | `pacman -S bwx` (or `bwx-git` from AUR)   |
-| Debian / Ubuntu | `apt install bwx`                         |
-| Fedora / EPEL   | `dnf install bwx`                         |
-| Homebrew        | `brew install bwx`                        |
-| Nix             | `nix-shell -p bwx`                        |
-| Alpine          | `apk add bwx`                             |
-| From source     | `cargo install --locked bwx` + `pinentry` |
+| Platform        | Command                                       |
+|-----------------|-----------------------------------------------|
+| Arch            | `pacman -S bwx` (or `bwx-git` from AUR)       |
+| Debian / Ubuntu | `apt install bwx`                             |
+| Fedora / EPEL   | `dnf install bwx`                             |
+| Homebrew        | `brew install bwx`                            |
+| Nix             | `nix-shell -p bwx`                            |
+| Alpine          | `apk add bwx`                                 |
+| From source     | `cargo install --locked bwx-cli` + `pinentry` |
 
 ## Usage
 
