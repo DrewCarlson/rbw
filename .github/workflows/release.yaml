@@ -345,26 +345,42 @@ jobs:
             prerelease_flag=(--prerelease)
           fi
 
-          # Publish the release (not draft) so the homebrew-bump
-          # workflow downstream can fetch SHA256SUMS without manual
-          # intervention. Stable tags become the new "Latest";
-          # prerelease tags get the GitHub prerelease badge instead
-          # via the flag computed above.
+          # Order matters when "Immutable Releases" is on: assets can
+          # only be uploaded while the release is still a draft, and
+          # publishing is the lock-in step. So:
+          #   1. create (or revert to) draft
+          #   2. upload all assets
+          #   3. flip --draft=false to publish + freeze
+          # Downstream `homebrew-bump.yaml` triggers on this workflow's
+          # completion and fetches SHA256SUMS from the now-published
+          # (immutable) release.
+          if gh release view "$tag" --json isDraft -q .isDraft 2>/dev/null \
+              | grep -qx 'false'; then
+            # Already published from a prior run — under Immutable
+            # Releases we can't demote back to draft to re-upload, so
+            # treat the prior run as authoritative and exit success.
+            echo "::notice::release $tag is already published (immutable); skipping re-upload"
+            exit 0
+          fi
+
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --title "$tag" \
               --notes-file "$notes_file" \
+              --draft \
               "${prerelease_flag[@]}"
           else
-            # On re-runs, refresh the body in case CHANGELOG.md was
-            # edited between the first attempt and this one. Drop
-            # any --draft state in case a prior run created it draft.
+            # Existing draft from a prior failed run — refresh body
+            # in case CHANGELOG.md was edited between attempts.
             gh release edit "$tag" \
               --notes-file "$notes_file" \
-              --draft=false \
+              --draft=true \
               "${prerelease_flag[@]}"
           fi
           gh release upload "$tag" dist/* --clobber
+
+          # Final publish — release becomes immutable here.
+          gh release edit "$tag" --draft=false
 
   crates-publish:
     name: cargo publish
