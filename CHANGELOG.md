@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.0.1] - 2026-04-25
+## [2.0.2] - 2026-04-25
 
 **Project renamed from `rbw` to `bwx-cli`.** The binaries are now `bwx`
 and `bwx-agent`; XDG dirs move from `~/.config/rbw` etc. to
