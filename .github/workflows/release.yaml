@@ -345,16 +345,24 @@ jobs:
             prerelease_flag=(--prerelease)
           fi
 
+          # Publish the release (not draft) so the homebrew-bump
+          # workflow downstream can fetch SHA256SUMS without manual
+          # intervention. Stable tags become the new "Latest";
+          # prerelease tags get the GitHub prerelease badge instead
+          # via the flag computed above.
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --title "$tag" \
               --notes-file "$notes_file" \
-              --draft \
               "${prerelease_flag[@]}"
           else
             # On re-runs, refresh the body in case CHANGELOG.md was
-            # edited between the first attempt and this one.
-            gh release edit "$tag" --notes-file "$notes_file" "${prerelease_flag[@]}"
+            # edited between the first attempt and this one. Drop
+            # any --draft state in case a prior run created it draft.
+            gh release edit "$tag" \
+              --notes-file "$notes_file" \
+              --draft=false \
+              "${prerelease_flag[@]}"
           fi
           gh release upload "$tag" dist/* --clobber
 

@@ -39,6 +39,7 @@ bwx setup-macos               # LaunchAgents + SSH_AUTH_SOCK for GUI apps
 
 | Channel                  | Command                                                                            |
 |--------------------------|------------------------------------------------------------------------------------|
+| Homebrew (macOS / Linux) | `brew install DrewCarlson/tap/bwx-cli`                                             |
 | crates.io (any platform) | `cargo install --locked bwx-cli` (binaries are `bwx` / `bwx-agent`)                |
 | Arch (AUR — release)     | `yay -S bwx-cli` (or any AUR helper)                                               |
 | Arch (AUR — git)         | `yay -S bwx-cli-git`                                                               |

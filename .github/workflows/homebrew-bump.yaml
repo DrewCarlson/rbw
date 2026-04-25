@@ -1,0 +1,152 @@
+name: homebrew-bump
+
+# Triggered after `release.yaml` finishes successfully on a tag push.
+# Computes SHA256s for the four target tarballs we expose to Homebrew
+# (macOS arm64/x86_64, Linux musl arm64/x86_64), rewrites the formula
+# template, opens a PR against the maintainer's shared tap repo
+# (`DrewCarlson/homebrew-tap`), and enables auto-merge so the new
+# version goes live as soon as any tap-side checks pass.
+
+on:
+  workflow_run:
+    workflows: ["release"]
+    types: [completed]
+
+jobs:
+  bump:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-latest
+    env:
+      TAP_REPO: DrewCarlson/homebrew-tap
+      FORMULA_NAME: bwx-cli
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Resolve tag + version
+        id: ver
+        run: |
+          tag="${{ github.event.workflow_run.head_branch }}"
+          ver="${tag#v}"
+          # Skip prereleases — `brew install` resolves to the stable
+          # release; bumping the formula on every rc would point users
+          # at unstable tarballs.
+          if [ "$ver" != "${ver%%-*}" ]; then
+            echo "::notice::skipping prerelease tag $tag"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "tag=$tag"  >> "$GITHUB_OUTPUT"
+          echo "ver=$ver"  >> "$GITHUB_OUTPUT"
+
+      - name: Download SHA256SUMS from the release
+        if: steps.ver.outputs.skip != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p staging
+          gh release download "${{ steps.ver.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --pattern 'SHA256SUMS' \
+            --output staging/SHA256SUMS
+
+      - name: Render formula
+        if: steps.ver.outputs.skip != '1'
+        run: |
+          set -euo pipefail
+          ver="${{ steps.ver.outputs.ver }}"
+
+          sha_for() {
+            # Args: <tarball-target-triple>. Looks up the matching
+            # checksum in SHA256SUMS produced by the release workflow.
+            local triple="$1"
+            local fname="bwx-cli-${ver}-${triple}.tar.gz"
+            grep -E "  ${fname}$" staging/SHA256SUMS | awk '{print $1}'
+          }
+
+          MAC_ARM=$(sha_for aarch64-apple-darwin)
+          MAC_X86=$(sha_for x86_64-apple-darwin)
+          LIN_ARM=$(sha_for aarch64-unknown-linux-musl)
+          LIN_X86=$(sha_for x86_64-unknown-linux-musl)
+
+          for v in MAC_ARM MAC_X86 LIN_ARM LIN_X86; do
+            if [ -z "${!v}" ]; then
+              echo "::error::missing checksum for $v in SHA256SUMS"
+              exit 1
+            fi
+          done
+
+          out=staging/${FORMULA_NAME}.rb
+          cp packaging/homebrew/${FORMULA_NAME}.rb "$out"
+          sed -i "s|__VERSION__|$ver|g" "$out"
+          sed -i "s|__SHA256_AARCH64_APPLE_DARWIN__|$MAC_ARM|" "$out"
+          sed -i "s|__SHA256_X86_64_APPLE_DARWIN__|$MAC_X86|" "$out"
+          sed -i "s|__SHA256_AARCH64_UNKNOWN_LINUX_MUSL__|$LIN_ARM|" "$out"
+          sed -i "s|__SHA256_X86_64_UNKNOWN_LINUX_MUSL__|$LIN_X86|" "$out"
+
+          echo "rendered formula:"
+          cat "$out"
+
+      - name: Open PR against the tap
+        if: steps.ver.outputs.skip != '1'
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          ver="${{ steps.ver.outputs.ver }}"
+          branch="bump/${FORMULA_NAME}-${ver}"
+
+          # Clone the tap with the PAT so subsequent `git push` works.
+          git clone --depth 1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/${TAP_REPO}.git" tap
+          cd tap
+          git config user.name  "bwx-cli release bot"
+          git config user.email "bwx-cli-release-bot@users.noreply.github.com"
+
+          # Branch — start fresh from main even on re-runs so the PR
+          # always reflects the latest tap state.
+          git checkout -B "$branch" origin/main
+
+          mkdir -p Formula
+          cp ../staging/${FORMULA_NAME}.rb Formula/${FORMULA_NAME}.rb
+
+          if git diff --quiet Formula/${FORMULA_NAME}.rb; then
+            echo "::notice::formula already up to date for v$ver — nothing to PR"
+            exit 0
+          fi
+
+          git add Formula/${FORMULA_NAME}.rb
+          git commit -m "${FORMULA_NAME} ${ver}" \
+                     -m "Auto-generated from drewcarlson/bwx-cli@${{ steps.ver.outputs.tag }}."
+          git push --force-with-lease origin "$branch"
+
+          # Open or update the PR. `gh pr create` errors if a PR for
+          # the same head branch already exists; in that case just
+          # leave the existing PR pointing at the (force-pushed)
+          # branch — its diff updates automatically.
+          if ! gh pr view "$branch" --repo "$TAP_REPO" >/dev/null 2>&1; then
+            gh pr create \
+              --repo "$TAP_REPO" \
+              --base main \
+              --head "$branch" \
+              --title "${FORMULA_NAME} ${ver}" \
+              --body "Bump \`${FORMULA_NAME}\` to **${ver}**.
+
+Source release: <https://github.com/${{ github.repository }}/releases/tag/${{ steps.ver.outputs.tag }}>
+
+Verify before merging (or wait for auto-merge to land it):
+\`\`\`sh
+brew tap DrewCarlson/tap
+brew install --build-from-source ./Formula/${FORMULA_NAME}.rb
+brew test ${FORMULA_NAME}
+brew audit --strict --online ${FORMULA_NAME}
+\`\`\`"
+          else
+            echo "::notice::PR for $branch already exists — diff was force-pushed"
+          fi
+
+          gh pr merge --repo "$TAP_REPO" --squash --auto "$branch" \
+            || echo "::warning::auto-merge could not be enabled (is 'Allow auto-merge' on in $TAP_REPO settings?)"
