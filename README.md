@@ -31,16 +31,18 @@ On Linux/BSD it's a drop-in replacement for upstream `rbw`.
 ### macOS
 
 ```sh
-git clone <fork-url> bwx && cd bwx
-./scripts/install.sh          # build, install, code-sign
-bwx setup-macos               # LaunchAgents + SSH_AUTH_SOCK for GUI apps
+brew install DrewCarlson/tap/bwx-cli
+bwx setup-macos               # LaunchAgent that keeps bwx-agent alive
 ```
+
+The Homebrew install pulls the notarized release tarball, so Touch ID
+unlock and the SSH-agent paths just work — no local Rust toolchain or
+manual code-signing needed.
 
 ### Everywhere else
 
 | Channel                  | Command                                                                            |
 |--------------------------|------------------------------------------------------------------------------------|
-| Homebrew (macOS / Linux) | `brew install DrewCarlson/tap/bwx-cli`                                             |
 | crates.io (any platform) | `cargo install --locked bwx-cli` (binaries are `bwx` / `bwx-agent`)                |
 | Arch (AUR — release)     | `yay -S bwx-cli` (or any AUR helper)                                               |
 | Arch (AUR — git)         | `yay -S bwx-cli-git`                                                               |
@@ -48,6 +50,7 @@ bwx setup-macos               # LaunchAgents + SSH_AUTH_SOCK for GUI apps
 | Debian / Ubuntu (`.deb`) | download from [GitHub Releases][rel] → `sudo dpkg -i bwx-cli_*_amd64.deb`          |
 | Fedora / RHEL (`.rpm`)   | download from [GitHub Releases][rel] → `sudo dnf install ./bwx-cli-*.x86_64.rpm`   |
 | Standalone tarball       | download from [GitHub Releases][rel], extract, put `bwx`/`bwx-agent` on PATH       |
+| From source (any)        | `git clone … && ./scripts/install.sh` (auto-runs `scripts/sign-macos.sh` on macOS) |
 
 [rel]: https://github.com/drewcarlson/bwx-cli/releases
 
