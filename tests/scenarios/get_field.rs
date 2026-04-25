@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -10,7 +10,7 @@ fn get_field_selects_specific_field() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     // Entry with an explicit username so we can fetch `user` via --field.

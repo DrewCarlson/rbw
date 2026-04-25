@@ -33,20 +33,20 @@ fn format_rfc3339(t: std::time::SystemTime) -> String {
 }
 
 const MISSING_CONFIG_HELP: &str =
-    "Before using rbw, you must configure the email address you would like to \
+    "Before using bwx, you must configure the email address you would like to \
     use to log in to the server by running:\n\n    \
-        rbw config set email <email>\n\n\
+        bwx config set email <email>\n\n\
     Additionally, if you are using a self-hosted installation, you should \
     run:\n\n    \
-        rbw config set base_url <url>\n\n\
+        bwx config set base_url <url>\n\n\
     and, if your server has a non-default identity url:\n\n    \
-        rbw config set identity_url <url>\n";
+        bwx config set identity_url <url>\n";
 
 #[derive(Debug, Clone)]
 pub enum Needle {
     Name(String),
     Uri(url::Url),
-    Uuid(rbw::uuid::Uuid, String),
+    Uuid(bwx::uuid::Uuid, String),
 }
 
 impl std::fmt::Display for Needle {
@@ -62,7 +62,7 @@ impl std::fmt::Display for Needle {
 
 #[allow(clippy::unnecessary_wraps)]
 pub fn parse_needle(arg: &str) -> Result<Needle, std::convert::Infallible> {
-    if let Ok(uuid) = arg.parse::<rbw::uuid::Uuid>() {
+    if let Ok(uuid) = arg.parse::<bwx::uuid::Uuid>() {
         return Ok(Needle::Uuid(uuid, arg.to_string()));
     }
     if let Ok(url) = url::Url::parse(arg) {
@@ -224,7 +224,7 @@ struct DecryptedSearchCipher {
     folder: Option<String>,
     name: String,
     user: Option<String>,
-    uris: Vec<(String, Option<rbw::api::UriMatchType>)>,
+    uris: Vec<(String, Option<bwx::api::UriMatchType>)>,
     fields: Vec<String>,
     notes: Option<String>,
 }
@@ -298,7 +298,7 @@ impl DecryptedSearchCipher {
 
         match needle {
             Needle::Uuid(uuid, s) => {
-                if self.id.parse::<rbw::uuid::Uuid>() != Ok(*uuid)
+                if self.id.parse::<bwx::uuid::Uuid>() != Ok(*uuid)
                     && !match_str(&self.name, s)
                 {
                     return false;
@@ -1095,12 +1095,12 @@ struct DecryptedField {
     name: Option<String>,
     value: Option<String>,
     #[serde(serialize_with = "serialize_field_type", rename = "type")]
-    ty: Option<rbw::api::FieldType>,
+    ty: Option<bwx::api::FieldType>,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref, clippy::ref_option)]
 fn serialize_field_type<S>(
-    ty: &Option<rbw::api::FieldType>,
+    ty: &Option<bwx::api::FieldType>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
@@ -1109,10 +1109,10 @@ where
     match ty {
         Some(ty) => {
             let s = match ty {
-                rbw::api::FieldType::Text => "text",
-                rbw::api::FieldType::Hidden => "hidden",
-                rbw::api::FieldType::Boolean => "boolean",
-                rbw::api::FieldType::Linked => "linked",
+                bwx::api::FieldType::Text => "text",
+                bwx::api::FieldType::Hidden => "hidden",
+                bwx::api::FieldType::Boolean => "boolean",
+                bwx::api::FieldType::Linked => "linked",
             };
             serializer.serialize_some(&Some(s))
         }
@@ -1131,16 +1131,16 @@ struct DecryptedHistoryEntry {
 #[cfg_attr(test, derive(Eq, PartialEq))]
 struct DecryptedUri {
     uri: String,
-    match_type: Option<rbw::api::UriMatchType>,
+    match_type: Option<bwx::api::UriMatchType>,
 }
 
 fn matches_url(
     url: &str,
-    match_type: Option<rbw::api::UriMatchType>,
+    match_type: Option<bwx::api::UriMatchType>,
     given_url: &url::Url,
 ) -> bool {
-    match match_type.unwrap_or(rbw::api::UriMatchType::Domain) {
-        rbw::api::UriMatchType::Domain => {
+    match match_type.unwrap_or(bwx::api::UriMatchType::Domain) {
+        bwx::api::UriMatchType::Domain => {
             let Some(given_host_port) = host_port(given_url) else {
                 return false;
             };
@@ -1158,7 +1158,7 @@ fn matches_url(
             url == given_host_port
                 || given_host_port.ends_with(&format!(".{url}"))
         }
-        rbw::api::UriMatchType::Host => {
+        bwx::api::UriMatchType::Host => {
             let Some(given_host_port) = host_port(given_url) else {
                 return false;
             };
@@ -1173,10 +1173,10 @@ fn matches_url(
             }
             url == given_host_port
         }
-        rbw::api::UriMatchType::StartsWith => {
+        bwx::api::UriMatchType::StartsWith => {
             given_url.to_string().starts_with(url)
         }
-        rbw::api::UriMatchType::Exact => {
+        bwx::api::UriMatchType::Exact => {
             if given_url.path() == "/" {
                 given_url.to_string().trim_end_matches('/')
                     == url.trim_end_matches('/')
@@ -1184,13 +1184,13 @@ fn matches_url(
                 given_url.to_string() == url
             }
         }
-        rbw::api::UriMatchType::RegularExpression => {
+        bwx::api::UriMatchType::RegularExpression => {
             let Ok(rx) = regex::Regex::new(url) else {
                 return false;
             };
             rx.is_match(given_url.as_ref())
         }
-        rbw::api::UriMatchType::Never => false,
+        bwx::api::UriMatchType::Never => false,
     }
 }
 
@@ -1254,7 +1254,7 @@ const HELP_NOTES: &str = r"
 ";
 
 pub fn config_show(key: Option<&str>) -> bin_error::Result<()> {
-    let config = rbw::config::Config::load()?;
+    let config = bwx::config::Config::load()?;
 
     let Some(key) = key else {
         serde_json::to_writer_pretty(std::io::stdout(), &config)
@@ -1298,8 +1298,8 @@ fn print_opt(v: Option<&str>) {
 }
 
 pub fn config_set(key: &str, value: &str) -> bin_error::Result<()> {
-    let mut config = rbw::config::Config::load()
-        .unwrap_or_else(|_| rbw::config::Config::new());
+    let mut config = bwx::config::Config::load()
+        .unwrap_or_else(|_| bwx::config::Config::new());
     match key {
         "email" => config.email = Some(value.to_string()),
         "sso_id" => config.sso_id = Some(value.to_string()),
@@ -1341,10 +1341,10 @@ pub fn config_set(key: &str, value: &str) -> bin_error::Result<()> {
                 .context("macos_unlock_dialog must be 'true' or 'false'")?;
         }
         "touchid_gate" => {
-            let gate: rbw::touchid::Gate =
+            let gate: bwx::touchid::Gate =
                 value.parse().map_err(bin_error::Error::msg)?;
             #[cfg(not(target_os = "macos"))]
-            if !matches!(gate, rbw::touchid::Gate::Off) {
+            if !matches!(gate, bwx::touchid::Gate::Off) {
                 return Err(bin_error::Error::msg(
                     "touchid_gate is only supported on macOS; the only \
                      accepted value on this platform is 'off'",
@@ -1358,7 +1358,7 @@ pub fn config_set(key: &str, value: &str) -> bin_error::Result<()> {
 
     // drop in-memory keys, since they will be different if the email or url
     // changed. not using lock() because we don't want to require the agent to
-    // be running (since this may be the user running `rbw config set
+    // be running (since this may be the user running `bwx config set
     // base_url` as the first operation), and stop_agent() already handles the
     // agent not running case gracefully.
     stop_agent()?;
@@ -1367,8 +1367,8 @@ pub fn config_set(key: &str, value: &str) -> bin_error::Result<()> {
 }
 
 pub fn config_unset(key: &str) -> bin_error::Result<()> {
-    let mut config = rbw::config::Config::load()
-        .unwrap_or_else(|_| rbw::config::Config::new());
+    let mut config = bwx::config::Config::load()
+        .unwrap_or_else(|_| bwx::config::Config::new());
     match key {
         "email" => config.email = None,
         "sso_id" => config.sso_id = None,
@@ -1378,22 +1378,22 @@ pub fn config_unset(key: &str) -> bin_error::Result<()> {
         "notifications_url" => config.notifications_url = None,
         "client_cert_path" => config.client_cert_path = None,
         "lock_timeout" => {
-            config.lock_timeout = rbw::config::default_lock_timeout();
+            config.lock_timeout = bwx::config::default_lock_timeout();
         }
-        "pinentry" => config.pinentry = rbw::config::default_pinentry(),
+        "pinentry" => config.pinentry = bwx::config::default_pinentry(),
         "ssh_confirm_sign" => config.ssh_confirm_sign = false,
         "macos_unlock_dialog" => {
             config.macos_unlock_dialog =
-                rbw::config::default_macos_unlock_dialog();
+                bwx::config::default_macos_unlock_dialog();
         }
-        "touchid_gate" => config.touchid_gate = rbw::touchid::Gate::Off,
+        "touchid_gate" => config.touchid_gate = bwx::touchid::Gate::Off,
         _ => return Err(crate::bin_error::err!("invalid config key: {key}")),
     }
     config.save()?;
 
     // drop in-memory keys, since they will be different if the email or url
     // changed. not using lock() because we don't want to require the agent to
-    // be running (since this may be the user running `rbw config set
+    // be running (since this may be the user running `bwx config set
     // base_url` as the first operation), and stop_agent() already handles the
     // agent not running case gracefully.
     stop_agent()?;
@@ -1431,7 +1431,7 @@ pub fn unlock() -> bin_error::Result<()> {
 }
 
 pub fn unlocked() -> bin_error::Result<()> {
-    // not ensure_agent, because we don't want `rbw unlocked` to start the
+    // not ensure_agent, because we don't want `bwx unlocked` to start the
     // agent if it's not running
     let _ = check_agent_version();
     crate::actions::unlocked()?;
@@ -1646,7 +1646,7 @@ pub fn code(
 pub fn add(
     name: &str,
     username: Option<&str>,
-    uris: &[(String, Option<rbw::api::UriMatchType>)],
+    uris: &[(String, Option<bwx::api::UriMatchType>)],
     folder: Option<&str>,
 ) -> bin_error::Result<()> {
     unlock()?;
@@ -1663,7 +1663,7 @@ pub fn add(
         .map(|username| crate::actions::encrypt(username, None))
         .transpose()?;
 
-    let contents = rbw::edit::edit("", HELP_PW)?;
+    let contents = bwx::edit::edit("", HELP_PW)?;
 
     let (password, notes) = parse_editor(&contents);
     let password = password
@@ -1675,7 +1675,7 @@ pub fn add(
     let uris: Vec<_> = uris
         .iter()
         .map(|uri| {
-            Ok(rbw::db::Uri {
+            Ok(bwx::db::Uri {
                 uri: crate::actions::encrypt(&uri.0, None)?,
                 match_type: uri.1,
             })
@@ -1685,7 +1685,7 @@ pub fn add(
     let mut folder_id = None;
     if let Some(folder_name) = folder {
         let (new_access_token, folders) =
-            rbw::actions::list_folders(&access_token, refresh_token)?;
+            bwx::actions::list_folders(&access_token, refresh_token)?;
         if let Some(new_access_token) = new_access_token {
             access_token.clone_from(&new_access_token);
             db.access_token = Some(new_access_token);
@@ -1706,7 +1706,7 @@ pub fn add(
             }
         }
         if folder_id.is_none() {
-            let (new_access_token, id) = rbw::actions::create_folder(
+            let (new_access_token, id) = bwx::actions::create_folder(
                 &access_token,
                 refresh_token,
                 &crate::actions::encrypt(folder_name, None)?,
@@ -1720,11 +1720,11 @@ pub fn add(
         }
     }
 
-    if let (Some(access_token), ()) = rbw::actions::add(
+    if let (Some(access_token), ()) = bwx::actions::add(
         &access_token,
         refresh_token,
         &name,
-        &rbw::db::EntryData::Login {
+        &bwx::db::EntryData::Login {
             username,
             password,
             uris,
@@ -1745,12 +1745,12 @@ pub fn add(
 pub fn generate(
     name: Option<&str>,
     username: Option<&str>,
-    uris: &[(String, Option<rbw::api::UriMatchType>)],
+    uris: &[(String, Option<bwx::api::UriMatchType>)],
     folder: Option<&str>,
     len: usize,
-    ty: rbw::pwgen::Type,
+    ty: bwx::pwgen::Type,
 ) -> bin_error::Result<()> {
-    let password = rbw::pwgen::pwgen(ty, len);
+    let password = bwx::pwgen::pwgen(ty, len);
     // pwgen guarantees valid UTF-8 (ASCII alphabet + space-joined
     // diceware words), so this unwrap can't fail.
     let password_str = std::str::from_utf8(password.password()).unwrap();
@@ -1773,7 +1773,7 @@ pub fn generate(
         let uris: Vec<_> = uris
             .iter()
             .map(|uri| {
-                Ok(rbw::db::Uri {
+                Ok(bwx::db::Uri {
                     uri: crate::actions::encrypt(&uri.0, None)?,
                     match_type: uri.1,
                 })
@@ -1783,7 +1783,7 @@ pub fn generate(
         let mut folder_id = None;
         if let Some(folder_name) = folder {
             let (new_access_token, folders) =
-                rbw::actions::list_folders(&access_token, refresh_token)?;
+                bwx::actions::list_folders(&access_token, refresh_token)?;
             if let Some(new_access_token) = new_access_token {
                 access_token.clone_from(&new_access_token);
                 db.access_token = Some(new_access_token);
@@ -1804,7 +1804,7 @@ pub fn generate(
                 }
             }
             if folder_id.is_none() {
-                let (new_access_token, id) = rbw::actions::create_folder(
+                let (new_access_token, id) = bwx::actions::create_folder(
                     &access_token,
                     refresh_token,
                     &crate::actions::encrypt(folder_name, None)?,
@@ -1818,11 +1818,11 @@ pub fn generate(
             }
         }
 
-        if let (Some(access_token), ()) = rbw::actions::add(
+        if let (Some(access_token), ()) = bwx::actions::add(
             &access_token,
             refresh_token,
             &name,
-            &rbw::db::EntryData::Login {
+            &bwx::db::EntryData::Login {
                 username,
                 password: Some(password),
                 uris,
@@ -1871,7 +1871,7 @@ pub fn edit(
                 write!(contents, "\n{notes}\n").unwrap();
             }
 
-            let contents = rbw::edit::edit(&contents, HELP_PW)?;
+            let contents = bwx::edit::edit(&contents, HELP_PW)?;
 
             let (password, notes) = parse_editor(&contents);
             let password = password
@@ -1888,7 +1888,7 @@ pub fn edit(
                 })
                 .transpose()?;
             let mut history = entry.history.clone();
-            let rbw::db::EntryData::Login {
+            let bwx::db::EntryData::Login {
                 username: entry_username,
                 password: entry_password,
                 uris: entry_uris,
@@ -1899,7 +1899,7 @@ pub fn edit(
             };
 
             if let Some(prev_password) = entry_password.clone() {
-                let new_history_entry = rbw::db::HistoryEntry {
+                let new_history_entry = bwx::db::HistoryEntry {
                     last_used_date: format_rfc3339(
                         std::time::SystemTime::now(),
                     ),
@@ -1908,7 +1908,7 @@ pub fn edit(
                 history.insert(0, new_history_entry);
             }
 
-            let data = rbw::db::EntryData::Login {
+            let data = bwx::db::EntryData::Login {
                 username: entry_username.clone(),
                 password,
                 uris: entry_uris.clone(),
@@ -1917,13 +1917,13 @@ pub fn edit(
             (data, entry.fields, notes, history)
         }
         DecryptedData::SecureNote => {
-            let data = rbw::db::EntryData::SecureNote {};
+            let data = bwx::db::EntryData::SecureNote {};
 
             let editor_content = decrypted.notes.map_or_else(
                 || "\n".to_string(),
                 |notes| format!("{notes}\n"),
             );
-            let contents = rbw::edit::edit(&editor_content, HELP_NOTES)?;
+            let contents = bwx::edit::edit(&editor_content, HELP_NOTES)?;
 
             // prepend blank line to be parsed as pw by `parse_editor`
             let (_, notes) = parse_editor(&format!("\n{contents}\n"));
@@ -1943,7 +1943,7 @@ pub fn edit(
         }
     };
 
-    if let (Some(access_token), ()) = rbw::actions::edit(
+    if let (Some(access_token), ()) = bwx::actions::edit(
         access_token,
         refresh_token,
         &entry.id,
@@ -1985,7 +1985,7 @@ pub fn remove(
         .with_context(|| format!("couldn't find entry for '{desc}'"))?;
 
     if let (Some(access_token), ()) =
-        rbw::actions::remove(access_token, refresh_token, &entry.id)?
+        bwx::actions::remove(access_token, refresh_token, &entry.id)?
     {
         db.access_token = Some(access_token);
         save_db(&db)?;
@@ -2063,7 +2063,7 @@ pub fn ssh_public_key(
 }
 
 pub fn ssh_socket() {
-    println!("{}", rbw::dirs::ssh_agent_socket_file().display());
+    println!("{}", bwx::dirs::ssh_agent_socket_file().display());
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -2089,14 +2089,14 @@ pub fn touchid_disable() -> bin_error::Result<()> {
     // Friendly reminder: `touchid_gate` and enrollment are orthogonal,
     // so disabling enrollment doesn't stop per-operation prompts. Only
     // mention it when the gate is still on.
-    let gate = rbw::config::Config::load()
+    let gate = bwx::config::Config::load()
         .map(|c| c.touchid_gate)
         .unwrap_or_default();
-    if !matches!(gate, rbw::touchid::Gate::Off) {
+    if !matches!(gate, bwx::touchid::Gate::Off) {
         println!(
-            "\nNote: `touchid_gate` is still '{gate}'; rbw will keep \
+            "\nNote: `touchid_gate` is still '{gate}'; bwx will keep \
              prompting for Touch ID on sensitive operations. Run \
-             `rbw config unset touchid_gate` to stop those prompts."
+             `bwx config unset touchid_gate` to stop those prompts."
         );
     }
     Ok(())
@@ -2107,9 +2107,9 @@ pub fn touchid_disable() -> bin_error::Result<()> {
 // ---------------------------------------------------------------------------
 
 #[cfg(target_os = "macos")]
-const LAUNCHAGENT_LABEL: &str = "net.tozt.rbw.ssh-auth-sock";
+const LAUNCHAGENT_LABEL: &str = "net.tozt.bwx.ssh-auth-sock";
 #[cfg(target_os = "macos")]
-const AGENT_LAUNCHAGENT_LABEL: &str = "net.tozt.rbw.agent";
+const AGENT_LAUNCHAGENT_LABEL: &str = "net.tozt.bwx.agent";
 
 #[cfg(not(target_os = "macos"))]
 pub fn setup_macos(_force: bool) -> bin_error::Result<()> {
@@ -2140,20 +2140,20 @@ fn do_setup_macos(force: bool) -> bin_error::Result<()> {
     let home = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .ok_or_else(|| bin_error::Error::msg("$HOME not set"))?;
-    let rbw_bin = std::env::current_exe()
+    let bwx_bin = std::env::current_exe()
         .map_err(|e| bin_error::Error::msg(format!("current_exe: {e}")))?;
     let helper_dir = home.join("bin");
-    let helper = helper_dir.join("rbw-set-ssh-sock");
+    let helper = helper_dir.join("bwx-set-ssh-sock");
     let launch_agents = home.join("Library/LaunchAgents");
     let plist = launch_agents.join(format!("{LAUNCHAGENT_LABEL}.plist"));
     let agent_plist =
         launch_agents.join(format!("{AGENT_LAUNCHAGENT_LABEL}.plist"));
-    // `rbw-agent` binary lives next to `rbw` in the same install dir.
-    let agent_bin = rbw_bin
+    // `bwx-agent` binary lives next to `bwx` in the same install dir.
+    let agent_bin = bwx_bin
         .parent()
-        .map(|d| d.join("rbw-agent"))
+        .map(|d| d.join("bwx-agent"))
         .ok_or_else(|| {
-            bin_error::Error::msg("couldn't resolve rbw-agent path")
+            bin_error::Error::msg("couldn't resolve bwx-agent path")
         })?;
 
     if (helper.exists() || plist.exists() || agent_plist.exists()) && !force {
@@ -2177,10 +2177,10 @@ fn do_setup_macos(force: bool) -> bin_error::Result<()> {
 
     let helper_body = format!(
         "#!/bin/sh\n\
-         # Managed by `rbw setup-macos`. Edit the rbw binary path if \
+         # Managed by `bwx setup-macos`. Edit the bwx binary path if \
          you move it.\n\
-         exec /bin/launchctl setenv SSH_AUTH_SOCK \"$({rbw} ssh-socket)\"\n",
-        rbw = rbw_bin.display(),
+         exec /bin/launchctl setenv SSH_AUTH_SOCK \"$({bwx} ssh-socket)\"\n",
+        bwx = bwx_bin.display(),
     );
     std::fs::write(&helper, helper_body).map_err(|e| {
         bin_error::Error::msg(format!("write {}: {e}", helper.display()))
@@ -2215,13 +2215,13 @@ fn do_setup_macos(force: bool) -> bin_error::Result<()> {
         bin_error::Error::msg(format!("write {}: {e}", plist.display()))
     })?;
 
-    // Second LaunchAgent: keep rbw-agent running so that
+    // Second LaunchAgent: keep bwx-agent running so that
     // SSH_AUTH_SOCK points at a live socket at all times. launchd will
     // respawn it if it crashes or exits after lock_timeout. Route
     // stdio to files under the data dir so a crash-on-boot is
     // debuggable without digging through `log show`.
-    let data_dir = rbw::dirs::agent_stdout_file().parent().map_or_else(
-        || home.join(".cache/rbw"),
+    let data_dir = bwx::dirs::agent_stdout_file().parent().map_or_else(
+        || home.join(".cache/bwx"),
         std::path::Path::to_path_buf,
     );
     std::fs::create_dir_all(&data_dir).ok();
@@ -2280,12 +2280,12 @@ fn do_setup_macos(force: bool) -> bin_error::Result<()> {
     }
 
     // Also set for the current session so the user doesn't have to log
-    // out. `rbw ssh-socket` is a cheap helper; invoke it via current_exe
+    // out. `bwx ssh-socket` is a cheap helper; invoke it via current_exe
     // to avoid depending on PATH.
-    let socket = std::process::Command::new(&rbw_bin)
+    let socket = std::process::Command::new(&bwx_bin)
         .arg("ssh-socket")
         .output()
-        .map_err(|e| bin_error::Error::msg(format!("rbw ssh-socket: {e}")))?;
+        .map_err(|e| bin_error::Error::msg(format!("bwx ssh-socket: {e}")))?;
     let socket = String::from_utf8_lossy(&socket.stdout).trim().to_string();
     let _ = std::process::Command::new("/bin/launchctl")
         .args(["setenv", "SSH_AUTH_SOCK", &socket])
@@ -2293,7 +2293,7 @@ fn do_setup_macos(force: bool) -> bin_error::Result<()> {
 
     println!("Installed LaunchAgents:");
     println!("  {} (sets SSH_AUTH_SOCK)", plist.display());
-    println!("  {} (keeps rbw-agent running)", agent_plist.display());
+    println!("  {} (keeps bwx-agent running)", agent_plist.display());
     println!("Helper script:         {}", helper.display());
     println!("SSH_AUTH_SOCK:         {socket}");
     println!();
@@ -2310,7 +2310,7 @@ fn do_teardown_macos() -> bin_error::Result<()> {
     let home = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .ok_or_else(|| bin_error::Error::msg("$HOME not set"))?;
-    let helper = home.join("bin/rbw-set-ssh-sock");
+    let helper = home.join("bin/bwx-set-ssh-sock");
     let plist =
         home.join(format!("Library/LaunchAgents/{LAUNCHAGENT_LABEL}.plist"));
     let agent_plist = home.join(format!(
@@ -2347,7 +2347,7 @@ fn do_teardown_macos() -> bin_error::Result<()> {
         }
     }
     if removed.is_empty() {
-        println!("nothing to remove — `rbw setup-macos` wasn't active");
+        println!("nothing to remove — `bwx setup-macos` wasn't active");
     } else {
         println!("removed:");
         for p in removed {
@@ -2370,14 +2370,14 @@ pub fn touchid_status() -> bin_error::Result<()> {
 pub fn ssh_allowed_signers() -> bin_error::Result<()> {
     unlock()?;
     let db = load_db()?;
-    let config = rbw::config::Config::load()?;
+    let config = bwx::config::Config::load()?;
     let email = config.email.as_deref().ok_or_else(|| {
         bin_error::Error::msg(
-            "no email configured; run `rbw config set email`",
+            "no email configured; run `bwx config set email`",
         )
     })?;
     for entry in &db.entries {
-        let rbw::db::EntryData::SshKey {
+        let bwx::db::EntryData::SshKey {
             public_key: Some(pk_enc),
             ..
         } = &entry.data
@@ -2419,18 +2419,18 @@ fn ensure_agent() -> bin_error::Result<()> {
 }
 
 fn run_agent() -> bin_error::Result<()> {
-    let agent_path = std::env::var_os("RBW_AGENT");
+    let agent_path = std::env::var_os("BWX_AGENT");
     let agent_path = agent_path
         .as_deref()
-        .unwrap_or_else(|| std::ffi::OsStr::from_bytes(b"rbw-agent"));
+        .unwrap_or_else(|| std::ffi::OsStr::from_bytes(b"bwx-agent"));
     let status = std::process::Command::new(agent_path)
         .status()
-        .context("failed to run rbw-agent")?;
+        .context("failed to run bwx-agent")?;
     if !status.success() {
         if let Some(code) = status.code() {
             if code != 23 {
                 return Err(crate::bin_error::err!(
-                    "failed to run rbw-agent: {status}"
+                    "failed to run bwx-agent: {status}"
                 ));
             }
         }
@@ -2440,14 +2440,14 @@ fn run_agent() -> bin_error::Result<()> {
 }
 
 fn check_config() -> bin_error::Result<()> {
-    rbw::config::Config::validate().map_err(|e| {
+    bwx::config::Config::validate().map_err(|e| {
         log::error!("{MISSING_CONFIG_HELP}");
         crate::bin_error::Error::new(e)
     })
 }
 
 fn check_agent_version() -> bin_error::Result<()> {
-    let client_version = rbw::protocol::VERSION;
+    let client_version = bwx::protocol::VERSION;
     let agent_version = version_or_quit()?;
     if agent_version != client_version {
         crate::actions::quit()?;
@@ -2465,22 +2465,22 @@ fn version_or_quit() -> bin_error::Result<u32> {
 }
 
 fn find_entry(
-    db: &rbw::db::Db,
+    db: &bwx::db::Db,
     mut needle: Needle,
     username: Option<&str>,
     folder: Option<&str>,
     ignore_case: bool,
-) -> bin_error::Result<(rbw::db::Entry, DecryptedCipher)> {
+) -> bin_error::Result<(bwx::db::Entry, DecryptedCipher)> {
     if let Needle::Uuid(uuid, s) = needle {
         for cipher in &db.entries {
-            if cipher.id.parse::<rbw::uuid::Uuid>() == Ok(uuid) {
+            if cipher.id.parse::<bwx::uuid::Uuid>() == Ok(uuid) {
                 return Ok((cipher.clone(), decrypt_cipher(cipher)?));
             }
         }
         needle = Needle::Name(s);
     }
 
-    let ciphers: Vec<(rbw::db::Entry, DecryptedSearchCipher)> = db
+    let ciphers: Vec<(bwx::db::Entry, DecryptedSearchCipher)> = db
         .entries
         .iter()
         .map(|entry| {
@@ -2495,13 +2495,13 @@ fn find_entry(
 }
 
 fn find_entry_raw(
-    entries: &[(rbw::db::Entry, DecryptedSearchCipher)],
+    entries: &[(bwx::db::Entry, DecryptedSearchCipher)],
     needle: &Needle,
     username: Option<&str>,
     folder: Option<&str>,
     ignore_case: bool,
-) -> bin_error::Result<(rbw::db::Entry, DecryptedSearchCipher)> {
-    let mut matches: Vec<(rbw::db::Entry, DecryptedSearchCipher)> = vec![];
+) -> bin_error::Result<(bwx::db::Entry, DecryptedSearchCipher)> {
+    let mut matches: Vec<(bwx::db::Entry, DecryptedSearchCipher)> = vec![];
 
     let find_matches = |strict_username, strict_folder, exact| {
         entries
@@ -2577,7 +2577,7 @@ fn decrypt_field(
 }
 
 fn decrypt_list_cipher(
-    entry: &rbw::db::Entry,
+    entry: &bwx::db::Entry,
     fields: &[ListField],
 ) -> bin_error::Result<DecryptedListCipher> {
     let id = entry.id.clone();
@@ -2592,7 +2592,7 @@ fn decrypt_list_cipher(
     };
     let user = if fields.contains(&ListField::User) {
         match &entry.data {
-            rbw::db::EntryData::Login { username, .. } => decrypt_field(
+            bwx::db::EntryData::Login { username, .. } => decrypt_field(
                 Field::Username,
                 username.as_deref(),
                 entry.key.as_deref(),
@@ -2616,7 +2616,7 @@ fn decrypt_list_cipher(
     };
     let uris = if fields.contains(&ListField::Uri) {
         match &entry.data {
-            rbw::db::EntryData::Login { uris, .. } => Some(
+            bwx::db::EntryData::Login { uris, .. } => Some(
                 uris.iter()
                     .filter_map(|s| {
                         decrypt_field(
@@ -2636,11 +2636,11 @@ fn decrypt_list_cipher(
     let entry_type = fields
         .contains(&ListField::EntryType)
         .then_some(match &entry.data {
-            rbw::db::EntryData::Login { .. } => "Login",
-            rbw::db::EntryData::Identity { .. } => "Identity",
-            rbw::db::EntryData::SshKey { .. } => "SSH Key",
-            rbw::db::EntryData::SecureNote => "Note",
-            rbw::db::EntryData::Card { .. } => "Card",
+            bwx::db::EntryData::Login { .. } => "Login",
+            bwx::db::EntryData::Identity { .. } => "Identity",
+            bwx::db::EntryData::SshKey { .. } => "SSH Key",
+            bwx::db::EntryData::SecureNote => "Note",
+            bwx::db::EntryData::Card { .. } => "Card",
         })
         .map(str::to_string);
 
@@ -2655,7 +2655,7 @@ fn decrypt_list_cipher(
 }
 
 fn decrypt_search_cipher(
-    entry: &rbw::db::Entry,
+    entry: &bwx::db::Entry,
 ) -> bin_error::Result<DecryptedSearchCipher> {
     let id = entry.id.clone();
     let name = crate::actions::decrypt(
@@ -2664,7 +2664,7 @@ fn decrypt_search_cipher(
         entry.org_id.as_deref(),
     )?;
     let user = match &entry.data {
-        rbw::db::EntryData::Login { username, .. } => decrypt_field(
+        bwx::db::EntryData::Login { username, .. } => decrypt_field(
             Field::Username,
             username.as_deref(),
             entry.key.as_deref(),
@@ -2690,7 +2690,7 @@ fn decrypt_search_cipher(
             )
         })
         .transpose();
-    let uris = if let rbw::db::EntryData::Login { uris, .. } = &entry.data {
+    let uris = if let bwx::db::EntryData::Login { uris, .. } = &entry.data {
         uris.iter()
             .filter_map(|s| {
                 decrypt_field(
@@ -2709,7 +2709,7 @@ fn decrypt_search_cipher(
         .fields
         .iter()
         .filter_map(|field| {
-            if field.ty == Some(rbw::api::FieldType::Hidden) {
+            if field.ty == Some(bwx::api::FieldType::Hidden) {
                 None
             } else {
                 field.value.as_ref()
@@ -2731,11 +2731,11 @@ fn decrypt_search_cipher(
         }
     };
     let entry_type = (match &entry.data {
-        rbw::db::EntryData::Login { .. } => "Login",
-        rbw::db::EntryData::Identity { .. } => "Identity",
-        rbw::db::EntryData::SshKey { .. } => "SSH Key",
-        rbw::db::EntryData::SecureNote => "Note",
-        rbw::db::EntryData::Card { .. } => "Card",
+        bwx::db::EntryData::Login { .. } => "Login",
+        bwx::db::EntryData::Identity { .. } => "Identity",
+        bwx::db::EntryData::SshKey { .. } => "SSH Key",
+        bwx::db::EntryData::SecureNote => "Note",
+        bwx::db::EntryData::Card { .. } => "Card",
     })
     .to_string();
 
@@ -2752,7 +2752,7 @@ fn decrypt_search_cipher(
 }
 
 fn decrypt_cipher(
-    entry: &rbw::db::Entry,
+    entry: &bwx::db::Entry,
 ) -> bin_error::Result<DecryptedCipher> {
     // folder name should always be decrypted with the local key because
     // folders are local to a specific user's vault, not the organization
@@ -2833,7 +2833,7 @@ fn decrypt_cipher(
         .collect::<bin_error::Result<_>>()?;
 
     let data = match &entry.data {
-        rbw::db::EntryData::Login {
+        bwx::db::EntryData::Login {
             username,
             password,
             totp,
@@ -2873,7 +2873,7 @@ fn decrypt_cipher(
                 })
                 .collect(),
         },
-        rbw::db::EntryData::Card {
+        bwx::db::EntryData::Card {
             cardholder_name,
             number,
             brand,
@@ -2918,7 +2918,7 @@ fn decrypt_cipher(
                 entry.org_id.as_deref(),
             ),
         },
-        rbw::db::EntryData::Identity {
+        bwx::db::EntryData::Identity {
             title,
             first_name,
             middle_name,
@@ -3040,8 +3040,8 @@ fn decrypt_cipher(
                 entry.org_id.as_deref(),
             ),
         },
-        rbw::db::EntryData::SecureNote => DecryptedData::SecureNote {},
-        rbw::db::EntryData::SshKey {
+        bwx::db::EntryData::SecureNote => DecryptedData::SecureNote {},
+        bwx::db::EntryData::SshKey {
             public_key,
             fingerprint,
             private_key,
@@ -3103,8 +3103,8 @@ fn parse_editor(contents: &str) -> (Option<String>, Option<String>) {
     (password, notes)
 }
 
-fn load_db() -> bin_error::Result<rbw::db::Db> {
-    let config = rbw::config::Config::load()?;
+fn load_db() -> bin_error::Result<bwx::db::Db> {
+    let config = bwx::config::Config::load()?;
     config.email.as_ref().map_or_else(
         || {
             Err(crate::bin_error::err!(
@@ -3112,14 +3112,14 @@ fn load_db() -> bin_error::Result<rbw::db::Db> {
             ))
         },
         |email| {
-            rbw::db::Db::load(&config.server_name(), email)
+            bwx::db::Db::load(&config.server_name(), email)
                 .map_err(crate::bin_error::Error::new)
         },
     )
 }
 
-fn save_db(db: &rbw::db::Db) -> bin_error::Result<()> {
-    let config = rbw::config::Config::load()?;
+fn save_db(db: &bwx::db::Db) -> bin_error::Result<()> {
+    let config = bwx::config::Config::load()?;
     config.email.as_ref().map_or_else(
         || {
             Err(crate::bin_error::err!(
@@ -3134,7 +3134,7 @@ fn save_db(db: &rbw::db::Db) -> bin_error::Result<()> {
 }
 
 fn remove_db() -> bin_error::Result<()> {
-    let config = rbw::config::Config::load()?;
+    let config = bwx::config::Config::load()?;
     config.email.as_ref().map_or_else(
         || {
             Err(crate::bin_error::err!(
@@ -3142,7 +3142,7 @@ fn remove_db() -> bin_error::Result<()> {
             ))
         },
         |email| {
-            rbw::db::Db::remove(&config.server_name(), email)
+            bwx::db::Db::remove(&config.server_name(), email)
                 .map_err(crate::bin_error::Error::new)
         },
     )
@@ -3156,7 +3156,7 @@ struct TotpParams {
 }
 
 fn decode_totp_secret(secret: &str) -> bin_error::Result<Vec<u8>> {
-    rbw::totp::decode_base32(secret).ok_or_else(|| {
+    bwx::totp::decode_base32(secret).ok_or_else(|| {
         crate::bin_error::err!("totp secret was not valid base32")
     })
 }
@@ -3232,10 +3232,10 @@ fn parse_totp_secret(secret: &str) -> bin_error::Result<TotpParams> {
 fn generate_totp(secret: &str) -> bin_error::Result<String> {
     let totp_params = parse_totp_secret(secret)?;
     let algorithm = match totp_params.algorithm.as_str() {
-        "SHA1" => rbw::totp::Algorithm::Sha1,
-        "SHA256" => rbw::totp::Algorithm::Sha256,
-        "SHA512" => rbw::totp::Algorithm::Sha512,
-        "STEAM" => rbw::totp::Algorithm::Steam,
+        "SHA1" => bwx::totp::Algorithm::Sha1,
+        "SHA256" => bwx::totp::Algorithm::Sha256,
+        "SHA512" => bwx::totp::Algorithm::Sha512,
+        "STEAM" => bwx::totp::Algorithm::Steam,
         other => {
             return Err(crate::bin_error::err!(
                 "{other} is not a valid totp algorithm"
@@ -3248,7 +3248,7 @@ fn generate_totp(secret: &str) -> bin_error::Result<String> {
         .as_secs();
     let digits = u32::try_from(totp_params.digits)
         .map_err(|_| crate::bin_error::err!("digits value out of range"))?;
-    rbw::totp::generate(
+    bwx::totp::generate(
         &totp_params.secret,
         now,
         totp_params.period,
@@ -3726,7 +3726,7 @@ mod test {
                 "one",
                 None,
                 None,
-                &[("https://one.com/", Some(rbw::api::UriMatchType::Domain))],
+                &[("https://one.com/", Some(bwx::api::UriMatchType::Domain))],
             ),
             make_entry(
                 "two",
@@ -3734,7 +3734,7 @@ mod test {
                 None,
                 &[(
                     "https://two.com/login",
-                    Some(rbw::api::UriMatchType::Domain),
+                    Some(bwx::api::UriMatchType::Domain),
                 )],
             ),
             make_entry(
@@ -3743,14 +3743,14 @@ mod test {
                 None,
                 &[(
                     "https://login.three.com/",
-                    Some(rbw::api::UriMatchType::Domain),
+                    Some(bwx::api::UriMatchType::Domain),
                 )],
             ),
             make_entry(
                 "four",
                 None,
                 None,
-                &[("four.com", Some(rbw::api::UriMatchType::Domain))],
+                &[("four.com", Some(bwx::api::UriMatchType::Domain))],
             ),
             make_entry(
                 "five",
@@ -3758,14 +3758,14 @@ mod test {
                 None,
                 &[(
                     "https://five.com:8080/",
-                    Some(rbw::api::UriMatchType::Domain),
+                    Some(bwx::api::UriMatchType::Domain),
                 )],
             ),
             make_entry(
                 "six",
                 None,
                 None,
-                &[("six.com:8080", Some(rbw::api::UriMatchType::Domain))],
+                &[("six.com:8080", Some(bwx::api::UriMatchType::Domain))],
             ),
             make_entry(
                 "seven",
@@ -3773,7 +3773,7 @@ mod test {
                 None,
                 &[(
                     "192.168.0.128:8080",
-                    Some(rbw::api::UriMatchType::Domain),
+                    Some(bwx::api::UriMatchType::Domain),
                 )],
             ),
         ];
@@ -3890,7 +3890,7 @@ mod test {
                 "one",
                 None,
                 None,
-                &[("https://one.com/", Some(rbw::api::UriMatchType::Host))],
+                &[("https://one.com/", Some(bwx::api::UriMatchType::Host))],
             ),
             make_entry(
                 "two",
@@ -3898,7 +3898,7 @@ mod test {
                 None,
                 &[(
                     "https://two.com/login",
-                    Some(rbw::api::UriMatchType::Host),
+                    Some(bwx::api::UriMatchType::Host),
                 )],
             ),
             make_entry(
@@ -3907,14 +3907,14 @@ mod test {
                 None,
                 &[(
                     "https://login.three.com/",
-                    Some(rbw::api::UriMatchType::Host),
+                    Some(bwx::api::UriMatchType::Host),
                 )],
             ),
             make_entry(
                 "four",
                 None,
                 None,
-                &[("four.com", Some(rbw::api::UriMatchType::Host))],
+                &[("four.com", Some(bwx::api::UriMatchType::Host))],
             ),
             make_entry(
                 "five",
@@ -3922,20 +3922,20 @@ mod test {
                 None,
                 &[(
                     "https://five.com:8080/",
-                    Some(rbw::api::UriMatchType::Host),
+                    Some(bwx::api::UriMatchType::Host),
                 )],
             ),
             make_entry(
                 "six",
                 None,
                 None,
-                &[("six.com:8080", Some(rbw::api::UriMatchType::Host))],
+                &[("six.com:8080", Some(bwx::api::UriMatchType::Host))],
             ),
             make_entry(
                 "seven",
                 None,
                 None,
-                &[("192.168.0.128:8080", Some(rbw::api::UriMatchType::Host))],
+                &[("192.168.0.128:8080", Some(bwx::api::UriMatchType::Host))],
             ),
         ];
 
@@ -4046,7 +4046,7 @@ mod test {
                 None,
                 &[(
                     "https://one.com/",
-                    Some(rbw::api::UriMatchType::StartsWith),
+                    Some(bwx::api::UriMatchType::StartsWith),
                 )],
             ),
             make_entry(
@@ -4055,7 +4055,7 @@ mod test {
                 None,
                 &[(
                     "https://two.com/login",
-                    Some(rbw::api::UriMatchType::StartsWith),
+                    Some(bwx::api::UriMatchType::StartsWith),
                 )],
             ),
             make_entry(
@@ -4064,7 +4064,7 @@ mod test {
                 None,
                 &[(
                     "https://login.three.com/",
-                    Some(rbw::api::UriMatchType::StartsWith),
+                    Some(bwx::api::UriMatchType::StartsWith),
                 )],
             ),
         ];
@@ -4143,7 +4143,7 @@ mod test {
                 "one",
                 None,
                 None,
-                &[("https://one.com/", Some(rbw::api::UriMatchType::Exact))],
+                &[("https://one.com/", Some(bwx::api::UriMatchType::Exact))],
             ),
             make_entry(
                 "two",
@@ -4151,7 +4151,7 @@ mod test {
                 None,
                 &[(
                     "https://two.com/login",
-                    Some(rbw::api::UriMatchType::Exact),
+                    Some(bwx::api::UriMatchType::Exact),
                 )],
             ),
             make_entry(
@@ -4160,14 +4160,14 @@ mod test {
                 None,
                 &[(
                     "https://login.three.com/",
-                    Some(rbw::api::UriMatchType::Exact),
+                    Some(bwx::api::UriMatchType::Exact),
                 )],
             ),
             make_entry(
                 "four",
                 None,
                 None,
-                &[("https://four.com", Some(rbw::api::UriMatchType::Exact))],
+                &[("https://four.com", Some(bwx::api::UriMatchType::Exact))],
             ),
         ];
 
@@ -4266,7 +4266,7 @@ mod test {
                 None,
                 &[(
                     r"^https://one\.com/$",
-                    Some(rbw::api::UriMatchType::RegularExpression),
+                    Some(bwx::api::UriMatchType::RegularExpression),
                 )],
             ),
             make_entry(
@@ -4275,7 +4275,7 @@ mod test {
                 None,
                 &[(
                     r"^https://two\.com/(login|start)",
-                    Some(rbw::api::UriMatchType::RegularExpression),
+                    Some(bwx::api::UriMatchType::RegularExpression),
                 )],
             ),
             make_entry(
@@ -4284,7 +4284,7 @@ mod test {
                 None,
                 &[(
                     r"^https://(login\.)?three\.com/$",
-                    Some(rbw::api::UriMatchType::RegularExpression),
+                    Some(bwx::api::UriMatchType::RegularExpression),
                 )],
             ),
         ];
@@ -4371,7 +4371,7 @@ mod test {
                 "one",
                 None,
                 None,
-                &[("https://one.com/", Some(rbw::api::UriMatchType::Never))],
+                &[("https://one.com/", Some(bwx::api::UriMatchType::Never))],
             ),
             make_entry(
                 "two",
@@ -4379,7 +4379,7 @@ mod test {
                 None,
                 &[(
                     "https://two.com/login",
-                    Some(rbw::api::UriMatchType::Never),
+                    Some(bwx::api::UriMatchType::Never),
                 )],
             ),
             make_entry(
@@ -4388,14 +4388,14 @@ mod test {
                 None,
                 &[(
                     "https://login.three.com/",
-                    Some(rbw::api::UriMatchType::Never),
+                    Some(bwx::api::UriMatchType::Never),
                 )],
             ),
             make_entry(
                 "four",
                 None,
                 None,
-                &[("four.com", Some(rbw::api::UriMatchType::Never))],
+                &[("four.com", Some(bwx::api::UriMatchType::Never))],
             ),
             make_entry(
                 "five",
@@ -4403,14 +4403,14 @@ mod test {
                 None,
                 &[(
                     "https://five.com:8080/",
-                    Some(rbw::api::UriMatchType::Never),
+                    Some(bwx::api::UriMatchType::Never),
                 )],
             ),
             make_entry(
                 "six",
                 None,
                 None,
-                &[("six.com:8080", Some(rbw::api::UriMatchType::Never))],
+                &[("six.com:8080", Some(bwx::api::UriMatchType::Never))],
             ),
         ];
 
@@ -4498,11 +4498,11 @@ mod test {
                 &[
                     (
                         "https://one.com/",
-                        Some(rbw::api::UriMatchType::Domain),
+                        Some(bwx::api::UriMatchType::Domain),
                     ),
                     (
                         "https://two.com/",
-                        Some(rbw::api::UriMatchType::Domain),
+                        Some(bwx::api::UriMatchType::Domain),
                     ),
                 ],
             ),
@@ -4512,7 +4512,7 @@ mod test {
                 None,
                 &[(
                     "https://two.com/login",
-                    Some(rbw::api::UriMatchType::Domain),
+                    Some(bwx::api::UriMatchType::Domain),
                 )],
             ),
         ];
@@ -4540,7 +4540,7 @@ mod test {
 
     #[track_caller]
     fn one_match(
-        entries: &[(rbw::db::Entry, DecryptedSearchCipher)],
+        entries: &[(bwx::db::Entry, DecryptedSearchCipher)],
         needle: &str,
         username: Option<&str>,
         folder: Option<&str>,
@@ -4562,7 +4562,7 @@ mod test {
 
     #[track_caller]
     fn no_matches(
-        entries: &[(rbw::db::Entry, DecryptedSearchCipher)],
+        entries: &[(bwx::db::Entry, DecryptedSearchCipher)],
         needle: &str,
         username: Option<&str>,
         folder: Option<&str>,
@@ -4584,7 +4584,7 @@ mod test {
 
     #[track_caller]
     fn many_matches(
-        entries: &[(rbw::db::Entry, DecryptedSearchCipher)],
+        entries: &[(bwx::db::Entry, DecryptedSearchCipher)],
         needle: &str,
         username: Option<&str>,
         folder: Option<&str>,
@@ -4606,8 +4606,8 @@ mod test {
 
     #[track_caller]
     fn entries_eq(
-        a: &(rbw::db::Entry, DecryptedSearchCipher),
-        b: &(rbw::db::Entry, DecryptedSearchCipher),
+        a: &(bwx::db::Entry, DecryptedSearchCipher),
+        b: &(bwx::db::Entry, DecryptedSearchCipher),
     ) -> bool {
         a.0 == b.0 && a.1 == b.1
     }
@@ -4616,24 +4616,24 @@ mod test {
         name: &str,
         username: Option<&str>,
         folder: Option<&str>,
-        uris: &[(&str, Option<rbw::api::UriMatchType>)],
-    ) -> (rbw::db::Entry, DecryptedSearchCipher) {
-        let id = rbw::uuid::new_v4();
+        uris: &[(&str, Option<bwx::api::UriMatchType>)],
+    ) -> (bwx::db::Entry, DecryptedSearchCipher) {
+        let id = bwx::uuid::new_v4();
         (
-            rbw::db::Entry {
+            bwx::db::Entry {
                 id: id.to_string(),
                 org_id: None,
                 folder: folder.map(|_| "encrypted folder name".to_string()),
                 folder_id: None,
                 name: "this is the encrypted name".to_string(),
-                data: rbw::db::EntryData::Login {
+                data: bwx::db::EntryData::Login {
                     username: username.map(|_| {
                         "this is the encrypted username".to_string()
                     }),
                     password: None,
                     uris: uris
                         .iter()
-                        .map(|(_, match_type)| rbw::db::Uri {
+                        .map(|(_, match_type)| bwx::db::Uri {
                             uri: "this is the encrypted uri".to_string(),
                             match_type: *match_type,
                         })
@@ -4644,7 +4644,7 @@ mod test {
                 notes: None,
                 history: vec![],
                 key: None,
-                master_password_reprompt: rbw::api::CipherRepromptType::None,
+                master_password_reprompt: bwx::api::CipherRepromptType::None,
             },
             DecryptedSearchCipher {
                 id: id.to_string(),

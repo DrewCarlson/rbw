@@ -4,7 +4,7 @@
 //! whitespace, single/double quotes — must round-trip through add /
 //! list / get without mangling.
 
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -15,7 +15,7 @@ fn shell_metachars_in_name_roundtrip() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     // Deliberately pick names that would break a naive cipherstring
@@ -36,7 +36,7 @@ fn shell_metachars_in_name_roundtrip() {
         let out = harness.run_with_stdin(&["add", name], stdin.as_bytes());
         assert!(
             out.status.success(),
-            "rbw add failed for {name:?}: stderr={}",
+            "bwx add failed for {name:?}: stderr={}",
             String::from_utf8_lossy(&out.stderr),
         );
     }

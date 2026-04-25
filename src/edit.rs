@@ -18,7 +18,7 @@ pub fn edit(contents: &str, help: &str) -> Result<String> {
     });
 
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("rbw");
+    let file = dir.path().join("bwx");
     let mut fh = std::fs::File::create(&file).unwrap();
     fh.write_all(contents.as_bytes()).unwrap();
     fh.write_all(help.as_bytes()).unwrap();

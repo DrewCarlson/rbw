@@ -1,6 +1,6 @@
 #!/bin/sh
-# Install rbw + rbw-agent from the current working tree, then — on macOS
-# — code-sign the resulting binaries so `rbw touchid enroll` can access
+# Install bwx + bwx-agent from the current working tree, then — on macOS
+# — code-sign the resulting binaries so `bwx touchid enroll` can access
 # the Keychain. Extra arguments are forwarded to `cargo install`.
 #
 # Usage:

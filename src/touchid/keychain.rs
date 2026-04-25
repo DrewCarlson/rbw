@@ -1,4 +1,4 @@
-//! Biometric-gated Keychain storage for rbw's Touch ID wrapper key.
+//! Biometric-gated Keychain storage for bwx's Touch ID wrapper key.
 //!
 //! The high-level `security-framework` crate doesn't expose
 //! `SecAccessControl`, so we drop down to `core-foundation` +
@@ -62,7 +62,7 @@ unsafe extern "C" {
     ) -> core_foundation_sys::base::CFTypeRef;
 }
 
-/// Returns `Some("<team>.rbw")` if this binary is code-signed with a
+/// Returns `Some("<team>.bwx")` if this binary is code-signed with a
 /// `keychain-access-groups` entitlement (Apple Development or Developer
 /// ID tier). Returns `None` for ad-hoc / unsigned binaries; those use
 /// the plain Keychain path (no ACL, no access group).
@@ -99,9 +99,9 @@ pub fn have_biometric_entitlement() -> bool {
     access_group_from_entitlement().is_some()
 }
 
-/// Keychain generic-password `service` value. All rbw Touch ID items
+/// Keychain generic-password `service` value. All bwx Touch ID items
 /// share this, with per-enrollment labels distinguishing them.
-const SERVICE: &str = "rbw";
+const SERVICE: &str = "bwx";
 
 #[derive(Debug)]
 pub enum Error {
@@ -296,7 +296,7 @@ pub fn delete(label: &str) -> Result<(), Error> {
 }
 
 /// Check whether an item exists under `label` without triggering any
-/// biometric prompt. Used by `rbw touchid status`.
+/// biometric prompt. Used by `bwx touchid status`.
 pub fn exists(label: &str) -> Result<bool, Error> {
     unsafe {
         let service = CFString::new(SERVICE);

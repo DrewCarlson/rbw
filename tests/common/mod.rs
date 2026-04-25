@@ -1,8 +1,8 @@
-//! Shared helpers for the rbw integration tests.
+//! Shared helpers for the bwx integration tests.
 //!
 //! This module intentionally lives under `tests/` rather than as a dev-only
 //! library crate — it is only ever compiled as part of the `e2e` integration
-//! test binary, and is allowed to rely on public APIs of the `rbw` library
+//! test binary, and is allowed to rely on public APIs of the `bwx` library
 //! crate (`src/lib.rs`).
 
 #![allow(dead_code)] // shared helpers; not every scenario uses everything.
@@ -36,11 +36,11 @@ use std::time::{Duration, Instant};
 
 use rsa::pkcs8::{EncodePrivateKey as _, EncodePublicKey as _};
 
-// Re-use rbw's own crypto primitives so the registration payload exactly
+// Re-use bwx's own crypto primitives so the registration payload exactly
 // matches what the production client would generate/accept.
-use rbw::cipherstring::CipherString;
-use rbw::identity::Identity;
-use rbw::locked;
+use bwx::cipherstring::CipherString;
+use bwx::identity::Identity;
+use bwx::locked;
 
 // ---------------------------------------------------------------------------
 // Vaultwarden subprocess
@@ -158,10 +158,10 @@ fn pick_free_port() -> u16 {
 }
 
 // ---------------------------------------------------------------------------
-// rbw harness
+// bwx harness
 // ---------------------------------------------------------------------------
 
-pub struct RbwHarness {
+pub struct BwxHarness {
     pub email: String,
     pub password: String,
     pub base_url: String,
@@ -174,13 +174,13 @@ pub struct RbwHarness {
     pub pinentry_path: PathBuf,
 }
 
-impl RbwHarness {
+impl BwxHarness {
     pub fn new(
         server: &VaultwardenServer,
         email: &str,
         password: &str,
     ) -> Self {
-        let tempdir = tempfile::tempdir().expect("create rbw tempdir");
+        let tempdir = tempfile::tempdir().expect("create bwx tempdir");
         let root = tempdir.path();
 
         let config_home = root.join("config");
@@ -194,14 +194,14 @@ impl RbwHarness {
         }
 
         // `directories::ProjectDirs` honors `XDG_CONFIG_HOME` on Linux but on
-        // macOS always resolves to `$HOME/Library/Application Support/rbw`.
+        // macOS always resolves to `$HOME/Library/Application Support/bwx`.
         // Compute the right path per platform.
-        let rbw_cfg_dir = if cfg!(target_os = "macos") {
-            home.join("Library/Application Support/rbw")
+        let bwx_cfg_dir = if cfg!(target_os = "macos") {
+            home.join("Library/Application Support/bwx")
         } else {
-            config_home.join("rbw")
+            config_home.join("bwx")
         };
-        std::fs::create_dir_all(&rbw_cfg_dir).expect("mkdir rbw config dir");
+        std::fs::create_dir_all(&bwx_cfg_dir).expect("mkdir bwx config dir");
         let cfg = serde_json::json!({
             "email": email,
             "base_url": server.base_url,
@@ -217,7 +217,7 @@ impl RbwHarness {
             "macos_unlock_dialog": false,
         });
         std::fs::write(
-            rbw_cfg_dir.join("config.json"),
+            bwx_cfg_dir.join("config.json"),
             serde_json::to_string_pretty(&cfg).unwrap(),
         )
         .expect("write config.json");
@@ -277,7 +277,7 @@ impl RbwHarness {
             "macos_unlock_dialog": false,
         });
         std::fs::write(
-            rbw_cfg_dir.join("config.json"),
+            bwx_cfg_dir.join("config.json"),
             serde_json::to_string_pretty(&cfg).unwrap(),
         )
         .expect("rewrite config.json");
@@ -296,22 +296,22 @@ impl RbwHarness {
         }
     }
 
-    /// Build a `Command` for the rbw binary under test, with all XDG env
+    /// Build a `Command` for the bwx binary under test, with all XDG env
     /// variables pointed at this harness's tempdir.
     pub fn cmd(&self) -> Command {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_rbw"));
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_bwx"));
         self.apply_env(&mut cmd);
         cmd
     }
 
-    /// Run `rbw <args...>` and return the captured output. Panics on spawn
+    /// Run `bwx <args...>` and return the captured output. Panics on spawn
     /// failure but always returns `Output` — the caller decides how to handle
     /// non-zero exit.
     pub fn run(&self, args: &[&str]) -> std::process::Output {
         self.cmd()
             .args(args)
             .output()
-            .unwrap_or_else(|e| panic!("spawn rbw {args:?}: {e}"))
+            .unwrap_or_else(|e| panic!("spawn bwx {args:?}: {e}"))
     }
 
     /// Replace the fake pinentry script so CONFIRM dialogs reply with an
@@ -352,7 +352,7 @@ impl RbwHarness {
         let out = self.run(args);
         assert!(
             out.status.success(),
-            "rbw {args:?} failed: status={:?}\nstdout={}\nstderr={}\n{}",
+            "bwx {args:?} failed: status={:?}\nstdout={}\nstderr={}\n{}",
             out.status,
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr),
@@ -361,14 +361,14 @@ impl RbwHarness {
         String::from_utf8_lossy(&out.stdout).into_owned()
     }
 
-    /// Snapshot of whatever rbw-agent has written to its redirected stdout/
+    /// Snapshot of whatever bwx-agent has written to its redirected stdout/
     /// stderr files. Useful for diagnosing failures since the daemonized
     /// agent detaches from the test harness's stream capture.
     pub fn agent_logs(&self) -> String {
         let data_dir = if cfg!(target_os = "macos") {
-            self.home.join("Library/Application Support/rbw")
+            self.home.join("Library/Application Support/bwx")
         } else {
-            self.data_home.join("rbw")
+            self.data_home.join("bwx")
         };
         let mut out = String::new();
         for (name, rel) in
@@ -394,7 +394,7 @@ impl RbwHarness {
         out
     }
 
-    /// Run `rbw <args...>` feeding `stdin_data` on standard input.
+    /// Run `bwx <args...>` feeding `stdin_data` on standard input.
     pub fn run_with_stdin(
         &self,
         args: &[&str],
@@ -409,14 +409,14 @@ impl RbwHarness {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .unwrap_or_else(|e| panic!("spawn rbw {args:?}: {e}"));
+            .unwrap_or_else(|e| panic!("spawn bwx {args:?}: {e}"));
         {
             let mut stdin = child.stdin.take().expect("stdin piped");
-            stdin.write_all(stdin_data).expect("write to rbw stdin");
+            stdin.write_all(stdin_data).expect("write to bwx stdin");
         }
         child
             .wait_with_output()
-            .unwrap_or_else(|e| panic!("wait rbw {args:?}: {e}"))
+            .unwrap_or_else(|e| panic!("wait bwx {args:?}: {e}"))
     }
 
     /// Log into the server + unlock the vault. Used as the first step of
@@ -427,15 +427,15 @@ impl RbwHarness {
     }
 
     /// Convenience: install an `$EDITOR` that rewrites the supplied tempfile
-    /// with `new_contents` exactly, so `rbw edit` / `rbw add` become
+    /// with `new_contents` exactly, so `bwx edit` / `bwx add` become
     /// deterministic. The script is written under the harness tempdir and its
     /// path is returned — callers set it on `cmd()` via `.env("EDITOR", ...)`.
     pub fn fake_editor(&self, new_contents: &str) -> PathBuf {
         let path = self.tempdir.path().join("fake-editor.sh");
         let body = format!(
             "#!/bin/sh\n\
-             # Overwrite the file rbw passed us with a fixed payload.\n\
-             cat <<'__RBW_E2E_EOF__' > \"$1\"\n{new_contents}\n__RBW_E2E_EOF__\n",
+             # Overwrite the file bwx passed us with a fixed payload.\n\
+             cat <<'__BWX_E2E_EOF__' > \"$1\"\n{new_contents}\n__BWX_E2E_EOF__\n",
         );
         std::fs::write(&path, body).expect("write fake editor");
         #[cfg(unix)]
@@ -455,20 +455,20 @@ impl RbwHarness {
             .env("XDG_DATA_HOME", &self.data_home)
             .env("XDG_RUNTIME_DIR", &self.runtime_dir)
             .env("HOME", &self.home)
-            .env("RBW_AGENT", env!("CARGO_BIN_EXE_rbw-agent"))
+            .env("BWX_AGENT", env!("CARGO_BIN_EXE_bwx-agent"))
             // Keep tests non-interactive and deterministic.
-            .env_remove("RBW_PROFILE")
+            .env_remove("BWX_PROFILE")
             .env_remove("DISPLAY")
             .env_remove("WAYLAND_DISPLAY")
             .env_remove("SSH_AUTH_SOCK");
     }
 }
 
-impl Drop for RbwHarness {
+impl Drop for BwxHarness {
     fn drop(&mut self) {
         // Best-effort: stop any agent this harness may have spawned so it
         // releases the socket before the tempdir is unlinked.
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_rbw"));
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_bwx"));
         self.apply_env(&mut cmd);
         let _ = cmd
             .arg("stop-agent")
@@ -510,7 +510,7 @@ pub fn register_user(
     email: &str,
     password: &str,
 ) -> Result<(), String> {
-    // 1. Derive master key + master-password hash via rbw's Identity type.
+    // 1. Derive master key + master-password hash via bwx's Identity type.
     let mut pw_vec = locked::Vec::new();
     pw_vec.extend(password.as_bytes().iter().copied());
     let locked_pw = locked::Password::new(pw_vec);
@@ -520,7 +520,7 @@ pub fn register_user(
         &locked_pw,
         // KdfType::Pbkdf2 is #[repr] but the enum isn't public as u8; pass
         // via the public type.
-        rbw::api::KdfType::Pbkdf2,
+        bwx::api::KdfType::Pbkdf2,
         KDF_ITERATIONS,
         None,
         None,
@@ -612,8 +612,8 @@ fn base64_encode_url_safe_no_pad(b: &[u8]) -> String {
 
 // ---------------------------------------------------------------------------
 // Authenticated API helper — for tests that need to create entries the way
-// "another client" would (outside of the rbw binary under test), most
-// commonly to populate a field like `totp` that rbw's CLI can't set.
+// "another client" would (outside of the bwx binary under test), most
+// commonly to populate a field like `totp` that bwx's CLI can't set.
 // ---------------------------------------------------------------------------
 
 pub struct Account {
@@ -622,7 +622,7 @@ pub struct Account {
 }
 
 /// Authenticate against vaultwarden's /identity/connect/token password flow.
-/// Mirrors what rbw's own login does, but runs in-process so tests can POST
+/// Mirrors what bwx's own login does, but runs in-process so tests can POST
 /// ciphers directly to the server.
 pub fn authenticate(
     server: &VaultwardenServer,
@@ -636,7 +636,7 @@ pub fn authenticate(
     let identity = Identity::new(
         email,
         &locked_pw,
-        rbw::api::KdfType::Pbkdf2,
+        bwx::api::KdfType::Pbkdf2,
         KDF_ITERATIONS,
         None,
         None,
@@ -649,7 +649,7 @@ pub fn authenticate(
         ("client_id", "cli"),
         ("deviceType", "8"),
         ("deviceIdentifier", "00000000-0000-0000-0000-000000000001"),
-        ("deviceName", "rbw-e2e"),
+        ("deviceName", "bwx-e2e"),
         ("devicePushToken", ""),
         ("username", email),
         (
@@ -819,5 +819,5 @@ mod unit {
     }
 
     #[allow(dead_code)]
-    fn _hush_unused(_: &super::RbwHarness) {}
+    fn _hush_unused(_: &super::BwxHarness) {}
 }

@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -12,41 +12,41 @@ fn register_login_unlock_list() {
     register_user(&server, email, password)
         .expect("failed to register user against vaultwarden");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
 
-    // `rbw login` — needs the pinentry to answer with the master password.
+    // `bwx login` — needs the pinentry to answer with the master password.
     let out = harness
         .cmd()
         .arg("login")
         .output()
-        .expect("spawn rbw login");
+        .expect("spawn bwx login");
     assert!(
         out.status.success(),
-        "rbw login failed: status={:?}\nstdout={}\nstderr={}",
+        "bwx login failed: status={:?}\nstdout={}\nstderr={}",
         out.status,
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
     );
 
-    // `rbw unlock` — idempotent after login but we exercise it explicitly.
+    // `bwx unlock` — idempotent after login but we exercise it explicitly.
     let out = harness
         .cmd()
         .arg("unlock")
         .output()
-        .expect("spawn rbw unlock");
+        .expect("spawn bwx unlock");
     assert!(
         out.status.success(),
-        "rbw unlock failed: status={:?}\nstdout={}\nstderr={}",
+        "bwx unlock failed: status={:?}\nstdout={}\nstderr={}",
         out.status,
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
     );
 
-    // `rbw list` — should succeed and emit nothing (brand new vault).
-    let out = harness.cmd().arg("list").output().expect("spawn rbw list");
+    // `bwx list` — should succeed and emit nothing (brand new vault).
+    let out = harness.cmd().arg("list").output().expect("spawn bwx list");
     assert!(
         out.status.success(),
-        "rbw list failed: status={:?}\nstdout={}\nstderr={}",
+        "bwx list failed: status={:?}\nstdout={}\nstderr={}",
         out.status,
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),

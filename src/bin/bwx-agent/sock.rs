@@ -20,9 +20,9 @@ impl Sock {
 
     pub async fn send(
         &mut self,
-        res: &rbw::protocol::Response,
+        res: &bwx::protocol::Response,
     ) -> bin_error::Result<()> {
-        if let rbw::protocol::Response::Error { error } = res {
+        if let bwx::protocol::Response::Error { error } = res {
             log::warn!("{error}");
         }
 
@@ -42,7 +42,7 @@ impl Sock {
 
     pub async fn recv(
         &mut self,
-    ) -> bin_error::Result<std::result::Result<rbw::protocol::Request, String>>
+    ) -> bin_error::Result<std::result::Result<bwx::protocol::Request, String>>
     {
         let Self(sock) = self;
         let limited = (&mut *sock).take(MAX_MESSAGE);
@@ -187,7 +187,7 @@ pub fn peer_pid(_fd: std::os::unix::io::RawFd) -> Option<i32> {
 }
 
 pub fn listen() -> bin_error::Result<tokio::net::UnixListener> {
-    let path = rbw::dirs::socket_file();
+    let path = bwx::dirs::socket_file();
     let sock = bind_atomic(&path).context("failed to listen on socket")?;
     log::debug!("listening on socket {}", path.to_string_lossy());
     Ok(sock)

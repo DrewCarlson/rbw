@@ -15,13 +15,13 @@ impl Sock {
     // specific kinds of std::io::Results differently
     pub fn connect() -> std::io::Result<Self> {
         Ok(Self(std::os::unix::net::UnixStream::connect(
-            rbw::dirs::socket_file(),
+            bwx::dirs::socket_file(),
         )?))
     }
 
     pub fn send(
         &mut self,
-        msg: &rbw::protocol::Request,
+        msg: &bwx::protocol::Request,
     ) -> bin_error::Result<()> {
         let Self(sock) = self;
         sock.write_all(
@@ -35,7 +35,7 @@ impl Sock {
         Ok(())
     }
 
-    pub fn recv(&mut self) -> bin_error::Result<rbw::protocol::Response> {
+    pub fn recv(&mut self) -> bin_error::Result<bwx::protocol::Response> {
         let Self(sock) = self;
         let limited = std::io::Read::take(&mut *sock, MAX_MESSAGE);
         let mut buf = std::io::BufReader::new(limited);

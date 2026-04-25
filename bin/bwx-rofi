@@ -1,0 +1,5 @@
+#!/bin/bash
+set -eu
+set -o pipefail
+
+bwx ls --fields folder,name,user | sed 's/\t/\//g' | sort | rofi -dmenu | sed 's/^[^\/]*\///' | sed 's/\// /' | xargs -r bwx get | xclip -l 1

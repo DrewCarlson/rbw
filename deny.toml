@@ -14,7 +14,7 @@ ignore = [
     # we only use rsa decryption here
     "RUSTSEC-2023-0071",
     # unsoundness only triggers when a consumer installs a custom rand logger;
-    # rbw doesn't register one, so the CryptoRng paths we rely on are safe.
+    # bwx doesn't register one, so the CryptoRng paths we rely on are safe.
     "RUSTSEC-2026-0097",
 ]
 

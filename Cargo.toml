@@ -1,17 +1,29 @@
 [package]
-name = "rbw"
-version = "1.15.0"
+name = "bwx-cli"
+version = "2.0.0"
 authors = ["Jesse Luehrs <doy@tozt.net>"]
 edition = "2021"
 rust-version = "1.82.0"
 
-description = "Unofficial Bitwarden CLI"
-repository = "https://github.com/doy/rbw"
+description = "Unofficial Bitwarden CLI with first-class macOS support"
+repository = "https://github.com/drewcarlson/bwx-cli"
 readme = "README.md"
 keywords = ["bitwarden"]
 categories = ["command-line-utilities", "cryptography"]
 license = "MIT"
 include = ["src/**/*", "bin/**/*", "LICENSE", "README.md", "CHANGELOG.md"]
+
+[lib]
+name = "bwx"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bwx"
+path = "src/bin/bwx/main.rs"
+
+[[bin]]
+name = "bwx-agent"
+path = "src/bin/bwx-agent/main.rs"
 
 [dependencies]
 aes = "0.8.4"
@@ -79,7 +91,7 @@ arboard = { version = "3.6.1", default-features = false, features = [
 # Integration tests (`tests/e2e.rs`) only use crates already present in
 # `[dependencies]`, so no new crates are introduced here. The entries below
 # exist so that the test binary links against them explicitly rather than
-# relying on transitive re-exports from the `rbw` library crate.
+# relying on transitive re-exports from the `bwx` library crate.
 [dev-dependencies]
 tempfile = "3.24.0"
 reqwest = { version = "0.12.28", default-features = false, features = [
@@ -140,33 +152,33 @@ depends = "pinentry"
 license-file = ["LICENSE"]
 assets = [
     [
-        "target/release/rbw",
+        "target/release/bwx",
         "usr/bin/",
         "755",
     ],
     [
-        "target/release/rbw-agent",
+        "target/release/bwx-agent",
         "usr/bin/",
         "755",
     ],
     [
         "target/release/completion/bash",
-        "usr/share/bash-completion/completions/rbw",
+        "usr/share/bash-completion/completions/bwx",
         "644",
     ],
     [
         "target/release/completion/zsh",
-        "usr/share/zsh/vendor-completions/_rbw",
+        "usr/share/zsh/vendor-completions/_bwx",
         "644",
     ],
     [
         "target/release/completion/fish",
-        "usr/share/fish/completions/rbw.fish",
+        "usr/share/fish/completions/bwx.fish",
         "644",
     ],
     [
         "README.md",
-        "usr/share/doc/rbw/README",
+        "usr/share/doc/bwx/README",
         "644",
     ],
 ]

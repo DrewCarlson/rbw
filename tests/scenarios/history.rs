@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -10,7 +10,7 @@ fn edit_writes_history_entry() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     let out = harness.run_with_stdin(&["add", "rotate.me"], b"pw-v1\n\n\n");

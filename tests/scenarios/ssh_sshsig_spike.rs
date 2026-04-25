@@ -1,21 +1,21 @@
-//! rbw-agent as the SSH signer for `ssh-keygen -Y sign` — the sshsig
+//! bwx-agent as the SSH signer for `ssh-keygen -Y sign` — the sshsig
 //! format git uses for commit/tag signing under `gpg.format = ssh`. The
 //! wire-level sign request is identical to plain ssh-agent signing: the
 //! caller wraps the payload in an sshsig preamble before handing it to the
 //! agent. This scenario exercises the user-facing recipe in the repo's
-//! `SPIKE_CODE_SIGNING.md`: fetch the pubkey + `allowed_signers` via rbw,
+//! `SPIKE_CODE_SIGNING.md`: fetch the pubkey + `allowed_signers` via bwx,
 //! sign through the agent, verify with `ssh-keygen -Y verify`.
 
 use std::process::Command;
 
 use crate::common::{
-    authenticate, register_user, upload_ssh_cipher, RbwHarness,
+    authenticate, register_user, upload_ssh_cipher, BwxHarness,
 };
 use crate::skip_if_no_vaultwarden;
 
 #[test]
 #[ignore = "requires vaultwarden binary; run with --ignored"]
-fn rbw_agent_signs_sshsig_via_ssh_keygen() {
+fn bwx_agent_signs_sshsig_via_ssh_keygen() {
     let server = skip_if_no_vaultwarden!();
 
     // Generate a throwaway ed25519 keypair locally.
@@ -28,7 +28,7 @@ fn rbw_agent_signs_sshsig_via_ssh_keygen() {
             "-N",
             "",
             "-C",
-            "rbw-e2e-sshsig",
+            "bwx-e2e-sshsig",
             "-f",
             key_path.to_str().unwrap(),
         ])
@@ -55,25 +55,25 @@ fn rbw_agent_signs_sshsig_via_ssh_keygen() {
     )
     .expect("upload");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
     harness.check(&["sync"]);
 
-    // Point ssh-keygen at rbw-agent.
-    let sock = harness.runtime_dir.join("rbw/ssh-agent-socket");
+    // Point ssh-keygen at bwx-agent.
+    let sock = harness.runtime_dir.join("bwx/ssh-agent-socket");
 
-    // Obtain the pubkey via `rbw ssh-public-key` — the user-facing recipe.
-    let pub_from_rbw = harness.check(&["ssh-public-key", "git.signing.key"]);
+    // Obtain the pubkey via `bwx ssh-public-key` — the user-facing recipe.
+    let pub_from_bwx = harness.check(&["ssh-public-key", "git.signing.key"]);
     assert_eq!(
-        pub_from_rbw.trim(),
+        pub_from_bwx.trim(),
         pub_line.trim(),
-        "rbw ssh-public-key diverged from uploaded value"
+        "bwx ssh-public-key diverged from uploaded value"
     );
     let pub_file = tmp.path().join("signer.pub");
-    std::fs::write(&pub_file, pub_from_rbw.trim()).unwrap();
+    std::fs::write(&pub_file, pub_from_bwx.trim()).unwrap();
 
     let message_path = tmp.path().join("payload.txt");
-    std::fs::write(&message_path, b"signed by rbw-agent via sshsig\n")
+    std::fs::write(&message_path, b"signed by bwx-agent via sshsig\n")
         .unwrap();
 
     // `ssh-keygen -Y sign -f pubkey -n namespace file` consults SSH_AUTH_SOCK
@@ -99,7 +99,7 @@ fn rbw_agent_signs_sshsig_via_ssh_keygen() {
     );
 
     // Verify the signature round-trips by using `-Y verify` against an
-    // allowed_signers file emitted by `rbw ssh-allowed-signers`.
+    // allowed_signers file emitted by `bwx ssh-allowed-signers`.
     let allowed = tmp.path().join("allowed_signers");
     std::fs::write(&allowed, harness.check(&["ssh-allowed-signers"]))
         .unwrap();

@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -10,7 +10,7 @@ fn lock_then_unlock_again() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     // Populate one entry so we can verify the vault round-trips across locks.

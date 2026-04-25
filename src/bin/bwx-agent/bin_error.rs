@@ -1,6 +1,6 @@
-// Error type used by the rbw binary. It provides both a simple message
-// variant and a "with context" variant that wraps another error, roughly
-// mimicking the anyhow API used previously.
+// Error type used by the bwx-agent binary. It provides both a simple
+// message variant and a "with context" variant that wraps another error,
+// roughly mimicking the anyhow API used previously.
 
 use std::fmt;
 
@@ -16,10 +16,6 @@ pub enum Error {
 impl Error {
     pub fn msg<S: Into<String>>(s: S) -> Self {
         Self::Msg(s.into())
-    }
-
-    pub fn new<E: Into<BoxError>>(e: E) -> Self {
-        Self::Boxed(e.into())
     }
 
     pub fn with_context<E: Into<BoxError>, S: Into<String>>(
@@ -91,14 +87,17 @@ macro_rules! impl_from {
 }
 
 impl_from!(
-    rbw::error::Error,
+    bwx::error::Error,
     std::io::Error,
     serde_json::Error,
-    std::num::ParseIntError,
+    rustix::io::Errno,
+    reqwest::Error,
+    tokio::task::JoinError,
 );
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[allow(dead_code)]
 pub trait ContextExt<T, E> {
     fn context<S: Into<String>>(self, ctx: S) -> Result<T>;
     fn with_context<S: Into<String>, F: FnOnce() -> S>(
@@ -119,17 +118,6 @@ impl<T, E: Into<BoxError>> ContextExt<T, E> for std::result::Result<T, E> {
         self.map_err(|e| Error::with_context(e, f()))
     }
 }
-
-macro_rules! err {
-    ($($arg:tt)*) => { $crate::bin_error::Error::msg(format!($($arg)*)) };
-}
-
-macro_rules! bail {
-    ($($arg:tt)*) => { return Err($crate::bin_error::err!($($arg)*)) };
-}
-
-pub(crate) use bail;
-pub(crate) use err;
 
 impl<T> ContextExt<T, Error> for Option<T> {
     fn context<S: Into<String>>(self, ctx: S) -> Result<T> {

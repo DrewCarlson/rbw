@@ -1,4 +1,4 @@
-_rbw_wrapper() {
+_bwx_wrapper() {
   local cur prev folder opts res name user
   COMPREPLY=()
 
@@ -45,27 +45,27 @@ _rbw_wrapper() {
     done
 
     if [[ "$prev" == --folder ]]; then
-      # rbw get --folder $folder
+      # bwx get --folder $folder
       res=$(
-        rbw list --fields folder 2>/dev/null \
+        bwx list --fields folder 2>/dev/null \
           | awk -v folder="$folder" 'NF && $1 ~ folder && !a[$1]++ {print $1}' 2>/dev/null
       )
     elif [[ "$prev" != --field ]]; then
       if [ -z "$name" ]; then
-        # rbw get ... $cur
+        # bwx get ... $cur
         res=$(
-          rbw list --fields name,folder 2>/dev/null \
+          bwx list --fields name,folder 2>/dev/null \
             | awk -F'\t' -v folder="$folder" '$1 && (!folder || $2 == folder) {print $1}' 2>/dev/null
         )
       elif [ -z "$user" ]; then
-        # rbw get ... name $cur
+        # bwx get ... name $cur
         res=$(
-          rbw list --fields name,folder,user 2>/dev/null \
+          bwx list --fields name,folder,user 2>/dev/null \
             | awk -F'\t' -v name="$name" -v folder="$folder" '$1 == name && (!folder || $2 == folder) {print $3}' 2>/dev/null
         )
       fi
     else
-      _rbw "$@"
+      _bwx "$@"
       return
     fi
 
@@ -80,12 +80,12 @@ _rbw_wrapper() {
     COMPREPLY=( $(compgen -W "${opts[*]}" -- "$cur") )
     return 0
   else
-    _rbw "$@"
+    _bwx "$@"
   fi
 }
 
 if [[ "${BASH_VERSINFO[0]}" -eq 4 && "${BASH_VERSINFO[1]}" -ge 4 || "${BASH_VERSINFO[0]}" -gt 4 ]]; then
-    complete -F _rbw_wrapper -o nosort -o bashdefault -o default rbw
+    complete -F _bwx_wrapper -o nosort -o bashdefault -o default bwx
 else
-    complete -F _rbw_wrapper -o bashdefault -o default rbw
+    complete -F _bwx_wrapper -o bashdefault -o default bwx
 fi

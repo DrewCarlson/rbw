@@ -1,13 +1,13 @@
 //! On-disk wrapper blob for Touch ID-enrolled vault keys.
 //!
-//! Written by `rbw touchid enroll`, read by the agent on unlock. Holds
+//! Written by `bwx touchid enroll`, read by the agent on unlock. Holds
 //! `CipherString`-wrapped vault keys + the Keychain label whose item
 //! holds the wrapping key. The wrapping key itself never touches
 //! disk; only the encrypted blob does.
 #![allow(clippy::doc_markdown)]
 
 use crate::locked;
-use crate::prelude::Error as RbwError;
+use crate::prelude::Error as BwxError;
 
 const FILENAME: &str = "touchid.json";
 
@@ -34,58 +34,58 @@ impl Blob {
         Self::path().exists()
     }
 
-    pub fn load() -> Result<Self, RbwError> {
+    pub fn load() -> Result<Self, BwxError> {
         let path = Self::path();
         let json = std::fs::read_to_string(&path).map_err(|source| {
-            RbwError::LoadConfig {
+            BwxError::LoadConfig {
                 source,
                 file: path.clone(),
             }
         })?;
         serde_json::from_str(&json)
-            .map_err(|source| RbwError::Json { source })
+            .map_err(|source| BwxError::Json { source })
     }
 
-    pub fn save(&self) -> Result<(), RbwError> {
+    pub fn save(&self) -> Result<(), BwxError> {
         use std::io::Write as _;
         use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
         let path = Self::path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|source| {
-                RbwError::SaveConfig {
+                BwxError::SaveConfig {
                     source,
                     file: path.clone(),
                 }
             })?;
         }
         let json = serde_json::to_string(self)
-            .map_err(|source| RbwError::Json { source })?;
+            .map_err(|source| BwxError::Json { source })?;
         let mut fh = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
             .mode(0o600)
             .open(&path)
-            .map_err(|source| RbwError::SaveConfig {
+            .map_err(|source| BwxError::SaveConfig {
                 source,
                 file: path.clone(),
             })?;
         fh.set_permissions(std::fs::Permissions::from_mode(0o600))
-            .map_err(|source| RbwError::SaveConfig {
+            .map_err(|source| BwxError::SaveConfig {
                 source,
                 file: path.clone(),
             })?;
         fh.write_all(json.as_bytes())
-            .map_err(|source| RbwError::SaveConfig { source, file: path })?;
+            .map_err(|source| BwxError::SaveConfig { source, file: path })?;
         Ok(())
     }
 
-    pub fn remove() -> Result<(), RbwError> {
+    pub fn remove() -> Result<(), BwxError> {
         let path = Self::path();
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(source) => Err(RbwError::SaveConfig { source, file: path }),
+            Err(source) => Err(BwxError::SaveConfig { source, file: path }),
         }
     }
 }

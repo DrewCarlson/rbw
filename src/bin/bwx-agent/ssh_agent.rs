@@ -16,7 +16,7 @@ impl SshAgent {
     }
 
     pub async fn run(self) -> crate::bin_error::Result<()> {
-        let socket = rbw::dirs::ssh_agent_socket_file();
+        let socket = bwx::dirs::ssh_agent_socket_file();
         let listener = crate::sock::bind_atomic(&socket)?;
         ssh_agent_lib::agent::listen(UidFilteredUnixListener(listener), self)
             .await
@@ -29,7 +29,7 @@ impl SshAgent {
 /// Per-connection ssh-agent session. Carries a human-readable `peer`
 /// description (program name + pid) so the Touch ID / pinentry prompts
 /// tell the user *which* local client is requesting the signature,
-/// instead of the generic "rbw-agent wants to sign with …". The peer
+/// instead of the generic "bwx-agent wants to sign with …". The peer
 /// string is never used for authorization — it's diagnostic/UX only.
 #[derive(Clone)]
 pub struct SshSession {
@@ -189,10 +189,10 @@ impl ssh_agent_lib::agent::Session for SshSession {
         .await
         .map_err(|e| ssh_agent_lib::error::AgentError::Other(e.into()))?;
 
-        let gate = rbw::config::Config::load()
-            .map_or(rbw::touchid::Gate::Off, |c| c.touchid_gate);
-        if rbw::touchid::gate_applies(gate, rbw::touchid::Kind::SshSign) {
-            let ok = rbw::touchid::require_presence(&format!(
+        let gate = bwx::config::Config::load()
+            .map_or(bwx::touchid::Gate::Off, |c| c.touchid_gate);
+        if bwx::touchid::gate_applies(gate, bwx::touchid::Kind::SshSign) {
+            let ok = bwx::touchid::require_presence(&format!(
                 "{peer} wants to sign with SSH key {name:?}",
                 peer = self.peer,
                 name = located.name,
@@ -210,7 +210,7 @@ impl ssh_agent_lib::agent::Session for SshSession {
         // last-known pinentry environment from the shared state.
         let (confirm_required, pinentry, environment) = {
             let state = self.state.lock().await;
-            let config = rbw::config::Config::load().map_err(|e| {
+            let config = bwx::config::Config::load().map_err(|e| {
                 ssh_agent_lib::error::AgentError::Other(e.into())
             })?;
             (
@@ -220,7 +220,7 @@ impl ssh_agent_lib::agent::Session for SshSession {
             )
         };
         if confirm_required {
-            let ok = rbw::pinentry::confirm(
+            let ok = bwx::pinentry::confirm(
                 &pinentry,
                 "Sign",
                 &format!(

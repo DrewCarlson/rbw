@@ -20,7 +20,7 @@ async fn tokio_main(
         startup_ack.ack()?;
     }
 
-    let config = rbw::config::Config::load()?;
+    let config = bwx::config::Config::load()?;
     let timeout_duration =
         std::time::Duration::from_secs(config.lock_timeout);
     let sync_timeout_duration =
@@ -43,7 +43,7 @@ async fn tokio_main(
             master_password_reprompt: std::collections::HashSet::new(),
             master_password_reprompt_initialized: false,
             touchid_sessions: std::collections::HashMap::new(),
-            last_environment: rbw::protocol::Environment::default(),
+            last_environment: bwx::protocol::Environment::default(),
             #[cfg(feature = "clipboard")]
             clipboard: arboard::Clipboard::new()
                 .inspect_err(|e| {
@@ -67,7 +67,7 @@ async fn tokio_main(
             res?;
         }
         () = shutdown_signal() => {
-            log::info!("rbw-agent: shutdown signal received; clearing state");
+            log::info!("bwx-agent: shutdown signal received; clearing state");
             shutdown_state.lock().await.clear();
         }
     }
@@ -100,13 +100,13 @@ async fn shutdown_signal() {
 }
 
 fn real_main() -> bin_error::Result<()> {
-    rbw::logger::init("info");
+    bwx::logger::init("info");
 
     let no_daemonize = std::env::args()
         .nth(1)
         .is_some_and(|arg| arg == "--no-daemonize");
 
-    rbw::dirs::make_all()?;
+    bwx::dirs::make_all()?;
 
     let startup_ack =
         daemon::daemonize(no_daemonize).context("failed to daemonize")?;

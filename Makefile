@@ -37,9 +37,9 @@ cleanall: clean
 
 completion: release
 	@mkdir -p target/x86_64-unknown-linux-musl/release/completion
-	@./target/x86_64-unknown-linux-musl/release/rbw gen-completions bash > target/x86_64-unknown-linux-musl/release/completion/bash
-	@./target/x86_64-unknown-linux-musl/release/rbw gen-completions zsh > target/x86_64-unknown-linux-musl/release/completion/zsh
-	@./target/x86_64-unknown-linux-musl/release/rbw gen-completions fish > target/x86_64-unknown-linux-musl/release/completion/fish
+	@./target/x86_64-unknown-linux-musl/release/bwx gen-completions bash > target/x86_64-unknown-linux-musl/release/completion/bash
+	@./target/x86_64-unknown-linux-musl/release/bwx gen-completions zsh > target/x86_64-unknown-linux-musl/release/completion/zsh
+	@./target/x86_64-unknown-linux-musl/release/bwx gen-completions fish > target/x86_64-unknown-linux-musl/release/completion/fish
 .PHONY: completion
 
 package: pkg/$(DEB_PACKAGE) pkg/$(TGZ_PACKAGE)
@@ -55,10 +55,10 @@ pkg/$(DEB_PACKAGE).minisig: pkg/$(DEB_PACKAGE)
 	@minisign -Sm $<
 
 pkg/$(TGZ_PACKAGE): release completion | pkg
-	@tar czf $@ -C target/x86_64-unknown-linux-musl/release rbw rbw-agent completion
+	@tar czf $@ -C target/x86_64-unknown-linux-musl/release bwx bwx-agent completion
 
 release-dir-deb:
-	@ssh partofme mkdir -p releases/rbw/deb
+	@ssh partofme mkdir -p releases/bwx/deb
 .PHONY: release-dir-deb
 
 publish: publish-crates-io publish-git-tags publish-deb publish-github
@@ -76,7 +76,7 @@ publish-git-tags: test
 .PHONY: publish-git-tags
 
 publish-deb: test pkg/$(DEB_PACKAGE) pkg/$(DEB_PACKAGE).minisig release-dir-deb
-	@scp pkg/$(DEB_PACKAGE) pkg/$(DEB_PACKAGE).minisig partofme:releases/rbw/deb
+	@scp pkg/$(DEB_PACKAGE) pkg/$(DEB_PACKAGE).minisig partofme:releases/bwx/deb
 .PHONY: publish-deb
 
 publish-github: test pkg/$(TGZ_PACKAGE)

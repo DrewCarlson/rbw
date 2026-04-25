@@ -15,13 +15,41 @@ impl StartupAck {
     }
 }
 
+/// Open + flock the pidfile. If another agent already holds the lock,
+/// exit with code 23 instead of bubbling an error. This is the same
+/// "already running" signal the daemonized parent uses, but applied
+/// uniformly so that the `--no-daemonize` path (used by the launchd
+/// keepalive plist) doesn't spam its log with "failed to lock pid file"
+/// every time launchd respawns into a still-occupied slot.
+fn lock_pidfile_or_exit_if_running() -> bin_error::Result<std::fs::File> {
+    match open_and_lock_pidfile() {
+        Ok(f) => Ok(f),
+        Err(e) => {
+            let mut cur: Option<&(dyn std::error::Error + 'static)> =
+                std::error::Error::source(&e);
+            while let Some(c) = cur {
+                if let Some(errno) = c.downcast_ref::<rustix::io::Errno>() {
+                    if *errno == rustix::io::Errno::WOULDBLOCK
+                        || *errno == rustix::io::Errno::AGAIN
+                    {
+                        std::process::exit(23);
+                    }
+                    break;
+                }
+                cur = c.source();
+            }
+            Err(e)
+        }
+    }
+}
+
 fn open_and_lock_pidfile() -> bin_error::Result<std::fs::File> {
     let pidfile = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(false)
         .mode(0o600)
-        .open(rbw::dirs::pid_file())
+        .open(bwx::dirs::pid_file())
         .context("failed to open pid file")?;
     rustix::fs::flock(
         &pidfile,
@@ -51,8 +79,8 @@ pub fn daemonize(
     no_daemonize: bool,
 ) -> bin_error::Result<Option<StartupAck>> {
     if no_daemonize {
-        let mut pidfile = open_and_lock_pidfile()?;
-        writeln!(pidfile, "{}", std::process::id())
+        let pidfile = lock_pidfile_or_exit_if_running()?;
+        writeln!(&pidfile, "{}", std::process::id())
             .context("failed to write pid file")?;
         // don't close the pidfile until the process exits, to ensure it
         // stays locked
@@ -65,38 +93,16 @@ pub fn daemonize(
     // "already running" condition is visible to the user-facing parent via
     // its exit code, instead of only being observable in the detached
     // grandchild.
-    let pidfile = match open_and_lock_pidfile() {
-        Ok(f) => f,
-        Err(e) => {
-            let mut cur: Option<&(dyn std::error::Error + 'static)> =
-                std::error::Error::source(&e);
-            let mut found: Option<rustix::io::Errno> = None;
-            while let Some(c) = cur {
-                if let Some(errno) = c.downcast_ref::<rustix::io::Errno>() {
-                    found = Some(*errno);
-                    break;
-                }
-                cur = c.source();
-            }
-            if let Some(errno) = found {
-                if errno == rustix::io::Errno::WOULDBLOCK
-                    || errno == rustix::io::Errno::AGAIN
-                {
-                    std::process::exit(23);
-                }
-            }
-            return Err(e);
-        }
-    };
+    let pidfile = lock_pidfile_or_exit_if_running()?;
 
     let stdout = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
-        .open(rbw::dirs::agent_stdout_file())?;
+        .open(bwx::dirs::agent_stdout_file())?;
     let stderr = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
-        .open(rbw::dirs::agent_stderr_file())?;
+        .open(bwx::dirs::agent_stderr_file())?;
     let devnull_in = rustix::fs::open(
         "/dev/null",
         rustix::fs::OFlags::RDONLY,

@@ -1097,7 +1097,7 @@ impl Client {
                 .unwrap(),
             device_type: u32::from(DEVICE_TYPE),
             device_identifier: device_id.to_string(),
-            device_name: "rbw".to_string(),
+            device_name: "bwx".to_string(),
             device_push_token: String::new(),
             two_factor_token: None,
             two_factor_provider: None,
@@ -1154,7 +1154,7 @@ impl Client {
                     client_id: "cli".to_string(),
                     device_type: u32::from(DEVICE_TYPE),
                     device_identifier: device_id.to_string(),
-                    device_name: "rbw".to_string(),
+                    device_name: "bwx".to_string(),
                     device_push_token: String::new(),
                     two_factor_token: two_factor_token
                         .map(std::string::ToString::to_string),
@@ -1173,7 +1173,7 @@ impl Client {
                 client_id: "cli".to_string(),
                 device_type: 8,
                 device_identifier: device_id.to_string(),
-                device_name: "rbw".to_string(),
+                device_name: "bwx".to_string(),
                 device_push_token: String::new(),
                 two_factor_token: two_factor_token
                     .map(std::string::ToString::to_string),
@@ -1773,13 +1773,13 @@ async fn start_sso_callback_server(
 ) -> Result<String> {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
     const SUCCESS_BODY: &str =
-        "<html><head><title>Success | rbw</title></head><body> \
-         <h1>Successfully authenticated with rbw</h1> \
+        "<html><head><title>Success | bwx</title></head><body> \
+         <h1>Successfully authenticated with bwx</h1> \
          <p>You may now close this tab and return to the terminal.</p> \
          </body></html>";
     const FAILURE_BODY: &str =
-        "<html><head><title>Failed | rbw</title></head><body> \
-         <h1>Something went wrong logging into the rbw</h1> \
+        "<html><head><title>Failed | bwx</title></head><body> \
+         <h1>Something went wrong logging into the bwx</h1> \
          <p>You may now close this tab and return to the terminal.</p> \
          </body></html>";
     const MAX_REQUEST_BYTES: usize = 16 * 1024;

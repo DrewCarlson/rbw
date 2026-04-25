@@ -1,11 +1,11 @@
-function __fish_rbw_get_completion_name
+function __fish_bwx_get_completion_name
     set -l cmd (commandline -xpc)
-    set -e cmd[1] # rbw
+    set -e cmd[1] # bwx
 
     argparse -i folder= f/field= full raw clipboard i/ignorecase h/help l/list-fields -- $cmd
     set -e argv[1] # get
 
-    set -l candidates (command rbw list --fields name,folder,user)
+    set -l candidates (command bwx list --fields name,folder,user)
     # if folder is set, filter by it
     if set -q _flag_folder
         set candidates (printf '%s\n' $candidates | string match -er "^[^\t]*\t$_flag_folder\t")
@@ -50,9 +50,9 @@ function __fish_rbw_get_completion_name
     end
 end
 
-function __fish_rbw_get_completion_fields
+function __fish_bwx_get_completion_fields
     set -l cmd (commandline -xpc)
-    set -e cmd[1] # rbw
+    set -e cmd[1] # bwx
     if test -z "$(commandline -xpt)"
         set -e cmd[-1] # -f/--field
     end
@@ -61,18 +61,18 @@ function __fish_rbw_get_completion_fields
     set -e argv[1] # get
 
     if test (count $argv) -gt 0
-        command rbw get "$argv[1]" --list-fields 2>/dev/null
+        command bwx get "$argv[1]" --list-fields 2>/dev/null
     end
 end
 
-complete -f -c rbw -n '__fish_seen_subcommand_from get edit' -a '(__fish_rbw_get_completion_name)'
+complete -f -c bwx -n '__fish_seen_subcommand_from get edit' -a '(__fish_bwx_get_completion_name)'
 
-# Complete options for `rbw get`
-complete -f -c rbw -n '__fish_seen_subcommand_from get' -s i -l ignorecase -d 'Ignore case'
-complete -f -c rbw -n '__fish_seen_subcommand_from get' -s f -l field -r -d 'Field to get' -a '(__fish_rbw_get_completion_fields)'
-complete -f -c rbw -n '__fish_seen_subcommand_from get' -s l -l list-fields -r -d 'List fields in this entry'
-complete -f -c rbw -n '__fish_seen_subcommand_from get' -l folder -r -d 'Folder name to search in' -a '(command rbw list --fields folder)'
-complete -f -c rbw -n '__fish_seen_subcommand_from get' -l full -d 'Display the notes in addition to the password'
-complete -f -c rbw -n '__fish_seen_subcommand_from get' -l raw -d 'Display output as JSON'
-complete -f -c rbw -n '__fish_seen_subcommand_from get' -s c -l clipboard -d 'Copy result to clipboard'
-complete -f -c rbw -n '__fish_seen_subcommand_from get' -s h -l help -d 'Print help'
+# Complete options for `bwx get`
+complete -f -c bwx -n '__fish_seen_subcommand_from get' -s i -l ignorecase -d 'Ignore case'
+complete -f -c bwx -n '__fish_seen_subcommand_from get' -s f -l field -r -d 'Field to get' -a '(__fish_bwx_get_completion_fields)'
+complete -f -c bwx -n '__fish_seen_subcommand_from get' -s l -l list-fields -r -d 'List fields in this entry'
+complete -f -c bwx -n '__fish_seen_subcommand_from get' -l folder -r -d 'Folder name to search in' -a '(command bwx list --fields folder)'
+complete -f -c bwx -n '__fish_seen_subcommand_from get' -l full -d 'Display the notes in addition to the password'
+complete -f -c bwx -n '__fish_seen_subcommand_from get' -l raw -d 'Display output as JSON'
+complete -f -c bwx -n '__fish_seen_subcommand_from get' -s c -l clipboard -d 'Copy result to clipboard'
+complete -f -c bwx -n '__fish_seen_subcommand_from get' -s h -l help -d 'Print help'

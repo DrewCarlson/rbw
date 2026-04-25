@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -10,7 +10,7 @@ fn config_show_set_unset_roundtrip() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
 
     // `config show` should surface the email we wrote via the harness.
     let shown = harness.check(&["config", "show"]);

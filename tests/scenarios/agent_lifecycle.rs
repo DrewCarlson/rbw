@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -10,7 +10,7 @@ fn stop_agent_then_next_command_restarts_it() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     // Populate one entry, then stop the agent explicitly.
@@ -26,7 +26,7 @@ fn stop_agent_then_next_command_restarts_it() {
         "stop-agent exited nonzero"
     );
 
-    // `rbw unlocked` requires the agent. First call should fail or succeed
+    // `bwx unlocked` requires the agent. First call should fail or succeed
     // after auto-respawn; either way, a subsequent unlock must bring the
     // vault back up and `get` must still work.
     harness.check(&["unlock"]);

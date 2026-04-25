@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use crate::common::{
-    authenticate, register_user, upload_ssh_cipher, RbwHarness,
+    authenticate, register_user, upload_ssh_cipher, BwxHarness,
 };
 use crate::skip_if_no_vaultwarden;
 
@@ -19,7 +19,7 @@ fn generate_ed25519_key(
             "-N",
             "",
             "-C",
-            "rbw-e2e",
+            "bwx-e2e",
             "-f",
             path.to_str()?,
         ])
@@ -71,13 +71,13 @@ fn ssh_agent_lists_uploaded_key() {
     )
     .expect("upload ssh cipher");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
     harness.check(&["sync"]);
 
-    // rbw-agent binds an ssh-agent-protocol socket alongside its regular
-    // IPC socket. Path mirrors `rbw::dirs::ssh_agent_socket_file()`.
-    let sock = harness.runtime_dir.join("rbw/ssh-agent-socket");
+    // bwx-agent binds an ssh-agent-protocol socket alongside its regular
+    // IPC socket. Path mirrors `bwx::dirs::ssh_agent_socket_file()`.
+    let sock = harness.runtime_dir.join("bwx/ssh-agent-socket");
     // The agent creates the socket lazily on first ssh-agent connection, so
     // just checking for its existence is a probe, not a gate.
     let key_b64 = pub_openssh
@@ -105,10 +105,10 @@ fn ssh_agent_lists_uploaded_key() {
     );
 }
 
-/// Exercise the full sign path: connect to rbw-agent as an ssh client, ask
+/// Exercise the full sign path: connect to bwx-agent as an ssh client, ask
 /// for identities, request a signature over arbitrary data, verify the
 /// signature locally with the matching public key. Round-trip proves both
-/// the agent protocol wiring and that rbw can reconstruct the private key
+/// the agent protocol wiring and that bwx can reconstruct the private key
 /// from the encrypted cipher field.
 #[test]
 #[ignore = "requires vaultwarden binary; run with --ignored"]
@@ -142,11 +142,11 @@ fn ssh_agent_signs_data_verifiable_by_pubkey() {
     )
     .expect("upload ssh cipher");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
     harness.check(&["sync"]);
 
-    let sock_path = harness.runtime_dir.join("rbw/ssh-agent-socket");
+    let sock_path = harness.runtime_dir.join("bwx/ssh-agent-socket");
     // The agent creates the ssh socket eagerly, but UnixStream::connect may
     // race the first listen; retry for a moment.
     let stream = {
@@ -175,7 +175,7 @@ fn ssh_agent_signs_data_verifiable_by_pubkey() {
         .find(|i| &i.pubkey == expected_pub.key_data())
         .expect("uploaded key not listed by agent");
 
-    let message = b"rbw e2e ssh signing payload".to_vec();
+    let message = b"bwx e2e ssh signing payload".to_vec();
     let sig = client
         .sign(SignRequest {
             pubkey: ident.pubkey.clone(),

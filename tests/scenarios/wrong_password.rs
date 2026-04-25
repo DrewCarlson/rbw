@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -11,9 +11,9 @@ fn unlock_with_wrong_password_fails() {
     register_user(&server, email, password).expect("register user");
 
     // Construct the harness with a *different* master password than what was
-    // registered. rbw should log in (since login uses the real password via
+    // registered. bwx should log in (since login uses the real password via
     // pinentry — we pass the wrong one) and unlock should fail.
-    let harness = RbwHarness::new(&server, email, "totally wrong password");
+    let harness = BwxHarness::new(&server, email, "totally wrong password");
 
     let out = harness.run(&["login"]);
     assert!(

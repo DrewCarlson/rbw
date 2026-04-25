@@ -137,8 +137,8 @@ fn runtime_dir() -> std::path::PathBuf {
 }
 
 pub fn profile() -> String {
-    match std::env::var("RBW_PROFILE") {
-        Ok(profile) if !profile.is_empty() => format!("rbw-{profile}"),
-        _ => "rbw".to_string(),
+    match std::env::var("BWX_PROFILE") {
+        Ok(profile) if !profile.is_empty() => format!("bwx-{profile}"),
+        _ => "bwx".to_string(),
     }
 }

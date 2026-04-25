@@ -173,7 +173,7 @@ pub enum Error {
     #[error("error waiting for pinentry to exit")]
     PinentryWait { source: tokio::io::Error },
 
-    #[error("This device has not yet been registered with the Bitwarden server. Run `rbw register` first, and then try again.")]
+    #[error("This device has not yet been registered with the Bitwarden server. Run `bwx register` first, and then try again.")]
     RegistrationRequired,
 
     #[error("failed to remove db at {}", .file.display())]

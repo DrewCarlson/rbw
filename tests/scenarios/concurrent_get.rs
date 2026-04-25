@@ -1,4 +1,4 @@
-//! Two `rbw get` invocations against the same agent, launched in
+//! Two `bwx get` invocations against the same agent, launched in
 //! parallel. The agent handles each incoming connection on its own
 //! task, so both must complete and return the correct plaintext. This
 //! catches regressions in the accept loop, state locking, or the
@@ -8,7 +8,7 @@
 use std::process::Stdio;
 use std::thread;
 
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -19,7 +19,7 @@ fn parallel_gets_both_succeed() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     harness.run_with_stdin(&["add", "conc.a"], b"pw-a\n\n\n");
@@ -38,7 +38,7 @@ fn parallel_gets_both_succeed() {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
-            .expect("spawn rbw get");
+            .expect("spawn bwx get");
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
         (out.status, stdout)
     };

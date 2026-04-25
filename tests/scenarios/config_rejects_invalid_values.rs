@@ -1,10 +1,10 @@
-//! `rbw config set` must reject values that its key-specific parser
+//! `bwx config set` must reject values that its key-specific parser
 //! can't handle, instead of silently coercing them to a default or a
 //! nonsensical state. Covers the two most security-relevant keys:
 //! `touchid_gate` (controls whether biometric prompts appear at all)
 //! and `ssh_confirm_sign` (controls the SSH-sign confirm dialog).
 
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -15,7 +15,7 @@ fn bad_touchid_gate_and_bool_rejected() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
 
     // --- unknown `touchid_gate` value ---
     let out = harness.run(&["config", "set", "touchid_gate", "maybe"]);

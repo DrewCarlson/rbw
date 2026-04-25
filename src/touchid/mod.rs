@@ -19,7 +19,7 @@ pub enum Gate {
     /// No biometric prompt. Always the value on non-macOS builds.
     #[default]
     Off,
-    /// Only ssh-agent sign requests and `rbw code` TOTP generation.
+    /// Only ssh-agent sign requests and `bwx code` TOTP generation.
     Signing,
     /// Every response that carries plaintext secret material.
     All,
@@ -57,7 +57,7 @@ impl fmt::Display for Gate {
 pub enum Kind {
     /// SSH-agent sign request.
     SshSign,
-    /// `rbw code` TOTP generation.
+    /// `bwx code` TOTP generation.
     TotpCode,
     /// Agent `Decrypt` / `Encrypt` / clipboard response carrying vault
     /// secret material.
@@ -128,7 +128,7 @@ mod macos {
         if !cfg!(debug_assertions) {
             return None;
         }
-        match std::env::var("RBW_TOUCHID_TEST_BYPASS").ok().as_deref() {
+        match std::env::var("BWX_TOUCHID_TEST_BYPASS").ok().as_deref() {
             Some("allow") => Some(true),
             Some("deny") => Some(false),
             _ => None,

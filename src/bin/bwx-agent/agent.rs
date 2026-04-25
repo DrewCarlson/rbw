@@ -79,7 +79,7 @@ impl Agent {
                             handle_request(&mut sock, state.clone()).await;
                         if let Err(e) = res {
                             // unwrap is the only option here
-                            sock.send(&rbw::protocol::Response::Error {
+                            sock.send(&bwx::protocol::Response::Error {
                                 error: format!("{e:#}"),
                             })
                             .await
@@ -117,40 +117,40 @@ async fn handle_request(
     let req = match req {
         Ok(msg) => msg,
         Err(error) => {
-            sock.send(&rbw::protocol::Response::Error { error }).await?;
+            sock.send(&bwx::protocol::Response::Error { error }).await?;
             return Ok(());
         }
     };
     let (action, environment, session_id, purpose) = req.into_parts();
     let set_timeout = match &action {
-        rbw::protocol::Action::Register => {
+        bwx::protocol::Action::Register => {
             crate::actions::register(sock, &environment).await?;
             true
         }
-        rbw::protocol::Action::Login => {
+        bwx::protocol::Action::Login => {
             crate::actions::login(sock, state.clone(), &environment).await?;
             true
         }
-        rbw::protocol::Action::Unlock => {
+        bwx::protocol::Action::Unlock => {
             crate::actions::unlock(sock, state.clone(), &environment).await?;
             true
         }
-        rbw::protocol::Action::CheckLock => {
+        bwx::protocol::Action::CheckLock => {
             crate::actions::check_lock(sock, state.clone()).await?;
             false
         }
-        rbw::protocol::Action::Lock => {
+        bwx::protocol::Action::Lock => {
             crate::actions::lock(sock, state.clone()).await?;
             // Revoke all Touch ID authorizations so a future unlock forces
             // a fresh biometric prompt.
             state.lock().await.clear_touchid_sessions();
             false
         }
-        rbw::protocol::Action::Sync => {
+        bwx::protocol::Action::Sync => {
             crate::actions::sync(Some(sock), state.clone()).await?;
             false
         }
-        rbw::protocol::Action::Decrypt {
+        bwx::protocol::Action::Decrypt {
             cipherstring,
             entry_key,
             org_id,
@@ -171,7 +171,7 @@ async fn handle_request(
             .await?;
             true
         }
-        rbw::protocol::Action::Encrypt { plaintext, org_id } => {
+        bwx::protocol::Action::Encrypt { plaintext, org_id } => {
             crate::actions::encrypt(
                 sock,
                 state.clone(),
@@ -183,7 +183,7 @@ async fn handle_request(
             .await?;
             true
         }
-        rbw::protocol::Action::ClipboardStore { text } => {
+        bwx::protocol::Action::ClipboardStore { text } => {
             crate::actions::clipboard_store(
                 sock,
                 state.clone(),
@@ -194,20 +194,20 @@ async fn handle_request(
             .await?;
             true
         }
-        rbw::protocol::Action::Quit => std::process::exit(0),
-        rbw::protocol::Action::Version => {
+        bwx::protocol::Action::Quit => std::process::exit(0),
+        bwx::protocol::Action::Version => {
             crate::actions::version(sock).await?;
             false
         }
-        rbw::protocol::Action::TouchIdEnroll => {
+        bwx::protocol::Action::TouchIdEnroll => {
             crate::actions::touchid_enroll(sock, state.clone()).await?;
             true
         }
-        rbw::protocol::Action::TouchIdDisable => {
+        bwx::protocol::Action::TouchIdDisable => {
             crate::actions::touchid_disable(sock).await?;
             false
         }
-        rbw::protocol::Action::TouchIdStatus => {
+        bwx::protocol::Action::TouchIdStatus => {
             crate::actions::touchid_status(sock).await?;
             false
         }

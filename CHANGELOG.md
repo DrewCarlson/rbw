@@ -1,5 +1,98 @@
 # Changelog
 
+## [2.0.0] - 2026-04-25
+
+**Project renamed from `rbw` to `bwx-cli`.** The binaries are now `bwx`
+and `bwx-agent`; XDG dirs move from `~/.config/rbw` etc. to
+`~/.config/bwx`; the macOS Keychain service is `"bwx"`; LaunchAgent
+labels are `net.tozt.bwx.*`; env vars use a `BWX_` prefix
+(`BWX_PROFILE`, `BWX_TTY`, …). Existing installs need to migrate
+config/cache dirs and re-enroll Touch ID.
+
+First-class macOS support, an extensive security hardening pass, and a
+substantial dependency-tree reduction. Linux/BSD users get a drop-in
+replacement for upstream `rbw` with the same hardening applied.
+
+## Added
+
+* **Touch ID unlock (macOS).** `bwx touchid enroll`/`disable`/`status` wrap
+  the vault keys under a Keychain-held wrapper key so biometry can replace
+  the master password. Three signing tiers (Developer ID, Apple Development,
+  ad-hoc) are detected at runtime and use the strongest available ACL.
+* **Per-operation Touch ID gate.** `touchid_gate = off | signing | all`
+  optionally requires a biometric prompt before each vault read or SSH
+  sign, coalesced to one prompt per `bwx <command>` via a session token.
+* **Native macOS dialogs.** Master password, 2FA codes, and SSH-sign
+  confirmation render as Aqua dialogs via `osascript` when pinentry isn't
+  available; toggled by `macos_unlock_dialog`.
+* **`bwx setup-macos` / `bwx teardown-macos`.** Install/remove two
+  LaunchAgents — one for `bwx-agent` keepalive, one to publish
+  `SSH_AUTH_SOCK` into launchd's environment so GUI apps inherit it.
+* **Built-in SSH agent + git commit signing.** Serves SSH keys stored as
+  Bitwarden "SSH Key" items. `bwx ssh-public-key`, `bwx ssh-allowed-signers`,
+  and `bwx ssh-socket` support `gpg.format = ssh` workflows.
+* **`ssh_confirm_sign`.** Optional pinentry CONFIRM dialog before each SSH
+  signature, with the requesting program's name + PID surfaced in the
+  prompt so the user knows which client is asking.
+* **End-to-end test suite.** A vaultwarden-spawning harness with 43
+  scenarios, run on Ubuntu and macOS in CI.
+
+## Changed
+
+* Replaced 20+ third-party crates with hand-rolled equivalents where the
+  upstream surface was overkill for our use: `axum` → raw tokio HTTP
+  parser for the SSO callback, `region` → direct `rustix` mlock/munlock
+  (also fixes the musl `munlock` panic on `RLIMIT_MEMLOCK`-constrained
+  CI runners), `humantime`, `textwrap`, `terminal_size`, `is-terminal`,
+  `percent-encoding`, `uuid`, `directories`, `libc` (direct usage),
+  `serde_path_to_error`, `block-padding`, `arrayvec`, `serde_repr`,
+  `totp-rs`, `base32`, `anyhow`, `daemonize`, `env_logger`, `hkdf`,
+  `clap_complete_nushell`/`clap_complete_fig`, `futures-channel`,
+  `futures`. `open` is now gated behind the optional `sso-browser`
+  feature.
+* Tokio feature set narrowed from `"full"` to the actually-used subset.
+
+## Security
+
+* **All on-disk state forced to 0o600 / 0o700.** `config.json`, `db.json`,
+  `touchid.json`, `device_id`, the pidfile, and the agent socket dir are
+  re-tightened on every write — explicit `set_permissions` in addition to
+  `OpenOptions::mode`, since the latter only applies on file creation.
+* **Wrapper seed kept in `locked::Vec` end-to-end.** Touch ID enroll +
+  unlock paths never materialize the 64-byte seed in plain heap or on
+  the stack; `keychain::load` returns `locked::Vec` directly.
+* **Pinentry stdout zeroized.** osascript / Assuan output buffers are
+  scrubbed before the parent `Output` drops, so a typed master password
+  doesn't linger in the heap.
+* **SSH key plaintext minimized.** `ssh-agent` Sign handler decrypts the
+  private key only *after* Touch ID + pinentry CONFIRM succeed; cancel
+  paths leave no key material in memory.
+* **SSO callback hardened.** State-mismatch error no longer embeds the
+  64-char OAuth state token. Raw tokio listener replaces axum (smaller
+  attack surface, no untrusted body parsing).
+* **Agent IPC hardened.** Per-connection `getpeereid` / `SO_PEERCRED`
+  check rejects cross-uid clients on shared hosts. Both control and
+  ssh-agent sockets bind atomically (tmp + rename) instead of unlink +
+  bind. Request and response framing capped at 16 MiB.
+* **MAC verify made explicit.** CipherString verification now uses
+  `hmac::Mac::verify_slice` (constant-time via `subtle::ConstantTimeEq`)
+  with a comment documenting the guarantee.
+* **Touch ID session bookkeeping fixed.** Sessions are recorded only
+  after a successful unlock, not on bare presence, so a failed unwrap
+  doesn't leave a usable auth window for the TTL.
+* **SIGTERM/SIGINT zeroize agent state.** In-memory keys are dropped
+  through their `mlock`/`zeroize` Drop impls before exit, instead of
+  living in kernel buffers until reaping.
+* **`pwgen` returns `locked::Password`.** Generated passwords are
+  mlocked + zeroized on drop in the immediate caller's scope.
+
+## Install
+
+* macOS: `git clone … && ./scripts/install.sh && bwx setup-macos`. The
+  install script auto-picks the strongest signing identity available
+  (Developer ID > Apple Development > ad-hoc) and applies the matching
+  Keychain ACL strategy.
+
 ## [1.15.0] - 2025-12-31
 
 ## Added
@@ -288,7 +381,7 @@ local vault with the necessary new data.*
 
 * Support for authenticating to self-hosted Bitwarden servers using client
   certificates (#92, Filipe Pina)
-* Support multiple independent profiles via the `RBW_PROFILE` environment
+* Support multiple independent profiles via the `BWX_PROFILE` environment
   variable (#93, Skia)
 * Add `rbw get --field` (#95, Jericho Keyne)
 

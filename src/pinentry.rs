@@ -38,7 +38,7 @@ pub async fn confirm(
     let mut child = opts.spawn().map_err(|source| Error::Spawn { source })?;
     let mut stdin = child.stdin.take().unwrap();
     stdin
-        .write_all(b"SETTITLE rbw\n")
+        .write_all(b"SETTITLE bwx\n")
         .await
         .map_err(|source| Error::WriteStdin { source })?;
     stdin
@@ -121,7 +121,7 @@ pub async fn getpin(
 
     let mut ncommands = 1;
     stdin
-        .write_all(b"SETTITLE rbw\n")
+        .write_all(b"SETTITLE bwx\n")
         .await
         .map_err(|source| Error::WriteStdin { source })?;
     ncommands += 1;

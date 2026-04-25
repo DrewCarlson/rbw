@@ -7,7 +7,7 @@
 
 use std::fmt::Write as _;
 
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -18,7 +18,7 @@ fn large_notes_survive_roundtrip() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     // Vaultwarden's 10 000-char `notes` cap applies to the *encrypted*
@@ -48,7 +48,7 @@ fn large_notes_survive_roundtrip() {
     let out = harness.run_with_stdin(&["add", "longnotes.example"], &stdin);
     assert!(
         out.status.success(),
-        "rbw add failed: stderr={}",
+        "bwx add failed: stderr={}",
         String::from_utf8_lossy(&out.stderr),
     );
 

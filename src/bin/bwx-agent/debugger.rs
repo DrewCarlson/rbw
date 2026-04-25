@@ -1,6 +1,6 @@
 use crate::bin_error;
 
-// Prevent other user processes from attaching to the rbw agent and dumping
+// Prevent other user processes from attaching to the bwx agent and dumping
 // memory This is not perfect protection, but closes a door. Unfortunately,
 // prctl only works on Linux.
 #[cfg(target_os = "linux")]

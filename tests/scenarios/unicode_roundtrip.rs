@@ -3,7 +3,7 @@
 //! in our hand-rolled buffer code (`locked::Vec`, pinentry percent
 //! decode, protocol framing, base64 roundtrip, etc.).
 
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -14,18 +14,18 @@ fn unicode_name_username_password_notes_survive_roundtrip() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     // Mix of emoji (multi-byte), combining diacritics, CJK, RTL, and a
-    // few ASCII punctuation chars that rbw's parsers sometimes split
+    // few ASCII punctuation chars that bwx's parsers sometimes split
     // on (|, =, \).
     let entry_name = "café 🔐 日本語";
     let username = "üser | root = Adm\\in";
     let password_val = "pässwörd‑123 🚀 الجزائر";
     let notes_body = "line one — naïve ✨\n二行目\nthird";
 
-    // `rbw add <name> [user]` — username is a positional arg. First
+    // `bwx add <name> [user]` — username is a positional arg. First
     // line of stdin is the password; a blank line separates password
     // from notes body.
     let out = harness.run_with_stdin(
@@ -34,7 +34,7 @@ fn unicode_name_username_password_notes_survive_roundtrip() {
     );
     assert!(
         out.status.success(),
-        "rbw add failed: stderr={}",
+        "bwx add failed: stderr={}",
         String::from_utf8_lossy(&out.stderr),
     );
 

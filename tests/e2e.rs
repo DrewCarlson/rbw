@@ -1,4 +1,4 @@
-//! End-to-end integration tests for rbw against a real Vaultwarden server.
+//! End-to-end integration tests for bwx against a real Vaultwarden server.
 //!
 //! # Running
 //!
@@ -19,7 +19,7 @@
 //! Tests are fully parallel-safe: each scenario owns an ephemeral
 //! Vaultwarden instance (random port, tempdir data folder) and a dedicated
 //! `$XDG_RUNTIME_DIR`/`$XDG_CONFIG_HOME`/`$XDG_CACHE_HOME`/`$XDG_DATA_HOME`/
-//! `$HOME` tree so the rbw-agent sockets, config, caches, and logs don't
+//! `$HOME` tree so the bwx-agent sockets, config, caches, and logs don't
 //! collide.
 //!
 //! By default the harness looks up `vaultwarden` on `$PATH`. Override with
@@ -28,7 +28,7 @@
 //! (tests still report as passing because they are `#[ignore]`-only).
 //!
 //! Each scenario spins up its own isolated Vaultwarden instance on an
-//! ephemeral port and its own tempdir acting as `XDG_*` for rbw, so tests can
+//! ephemeral port and its own tempdir acting as `XDG_*` for bwx, so tests can
 //! run in parallel without stomping on each other.
 
 mod common;

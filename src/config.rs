@@ -179,7 +179,7 @@ impl Config {
             })?;
         // `OpenOptions::mode` only applies on file creation; if the
         // file already exists (e.g. a user created it with a looser
-        // mode) we still want to tighten it every time rbw writes.
+        // mode) we still want to tighten it every time bwx writes.
         fh.set_permissions(std::fs::Permissions::from_mode(0o600))
             .map_err(|source| Error::SaveConfig {
                 source,

@@ -1,7 +1,7 @@
 //! Exercise the Touch ID gate without actually prompting the user.
 //!
-//! In debug builds (everything cargo-test produces), `rbw::touchid`
-//! honours `RBW_TOUCHID_TEST_BYPASS=allow|deny` and skips the real
+//! In debug builds (everything cargo-test produces), `bwx::touchid`
+//! honours `BWX_TOUCHID_TEST_BYPASS=allow|deny` and skips the real
 //! `LAContext` FFI, treating the env value as a synthetic user
 //! response. That lets us lock in the gate semantics in CI without
 //! Touch ID hardware.
@@ -11,7 +11,7 @@
 
 #![cfg(target_os = "macos")]
 
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -22,7 +22,7 @@ fn gate_off_skips_touchid() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     // Add an entry we can `get` later.
@@ -38,7 +38,7 @@ fn gate_off_skips_touchid() {
     // the gate path wasn't consulted at all.
     let out = harness
         .cmd()
-        .env("RBW_TOUCHID_TEST_BYPASS", "deny")
+        .env("BWX_TOUCHID_TEST_BYPASS", "deny")
         .args(["get", "e1"])
         .output()
         .expect("spawn");
@@ -58,7 +58,7 @@ fn gate_all_bypass_allow_succeeds() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
     harness
         .run_with_stdin(&["add", "e1"], b"pw\n\n\n")
@@ -75,7 +75,7 @@ fn gate_all_bypass_allow_succeeds() {
 
     let out = harness
         .cmd()
-        .env("RBW_TOUCHID_TEST_BYPASS", "allow")
+        .env("BWX_TOUCHID_TEST_BYPASS", "allow")
         .args(["get", "e1"])
         .output()
         .expect("spawn");
@@ -95,7 +95,7 @@ fn gate_all_bypass_deny_blocks() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
     harness
         .run_with_stdin(&["add", "e1"], b"pw\n\n\n")
@@ -107,7 +107,7 @@ fn gate_all_bypass_deny_blocks() {
 
     let out = harness
         .cmd()
-        .env("RBW_TOUCHID_TEST_BYPASS", "deny")
+        .env("BWX_TOUCHID_TEST_BYPASS", "deny")
         .args(["get", "e1"])
         .output()
         .expect("spawn");
@@ -130,7 +130,7 @@ fn gate_signing_spares_vault_reads() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
     harness
         .run_with_stdin(&["add", "e1"], b"pw\n\n\n")
@@ -145,7 +145,7 @@ fn gate_signing_spares_vault_reads() {
     // proving Gate::Signing excludes VaultSecret.
     let out = harness
         .cmd()
-        .env("RBW_TOUCHID_TEST_BYPASS", "deny")
+        .env("BWX_TOUCHID_TEST_BYPASS", "deny")
         .args(["get", "e1"])
         .output()
         .expect("spawn");

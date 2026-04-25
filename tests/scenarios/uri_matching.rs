@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -10,10 +10,10 @@ fn get_by_uri_finds_entry() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
-    // Add with --uri. rbw persists the URL on the entry's uris array.
+    // Add with --uri. bwx persists the URL on the entry's uris array.
     let out = harness.run_with_stdin(
         &["add", "site.example", "--uri", "https://site.example/login"],
         b"sitepw\n\n\n",

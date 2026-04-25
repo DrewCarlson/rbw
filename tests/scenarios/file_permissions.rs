@@ -1,9 +1,9 @@
-//! Verifies that rbw writes its on-disk state with tight Unix modes.
+//! Verifies that bwx writes its on-disk state with tight Unix modes.
 //! Regression test for `SECURITY_AUDIT.md` items M1/M2 — those fixes are
 //! easy to undo accidentally (e.g. swapping `OpenOptions` back to
 //! `File::create`) and the mode bits are invisible outside of `ls -l`.
 
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -16,15 +16,15 @@ fn sensitive_files_and_dirs_have_tight_modes() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
     // Put something in the vault so db.json exists on disk.
     harness.run_with_stdin(&["add", "perms.example"], b"pw\n\n\n");
     harness.check(&["sync"]);
 
-    // Resolve rbw's on-disk roots from the harness env. The harness
+    // Resolve bwx's on-disk roots from the harness env. The harness
     // points `XDG_CONFIG_HOME` / `XDG_DATA_HOME` at tempdir children
-    // on Linux; macOS rbw ignores XDG and uses `$HOME/Library/...`
+    // on Linux; macOS bwx ignores XDG and uses `$HOME/Library/...`
     // regardless.
     let env: std::collections::HashMap<_, _> = harness
         .cmd()
@@ -38,17 +38,17 @@ fn sensitive_files_and_dirs_have_tight_modes() {
         std::path::PathBuf::from(v)
     };
     let cfg_abs = if cfg!(target_os = "macos") {
-        get("HOME").join("Library/Application Support/rbw")
+        get("HOME").join("Library/Application Support/bwx")
     } else {
-        get("XDG_CONFIG_HOME").join("rbw")
+        get("XDG_CONFIG_HOME").join("bwx")
     };
     // db cache lives in `cache_dir` (XDG_CACHE_HOME on Linux,
-    // `~/Library/Caches/rbw` on macOS), not `data_dir`. Its filename
+    // `~/Library/Caches/bwx` on macOS), not `data_dir`. Its filename
     // is `<server>:<email>.json`.
     let cache_abs = if cfg!(target_os = "macos") {
-        get("HOME").join("Library/Caches/rbw")
+        get("HOME").join("Library/Caches/bwx")
     } else {
-        get("XDG_CACHE_HOME").join("rbw")
+        get("XDG_CACHE_HOME").join("bwx")
     };
 
     let check_mode = |path: &std::path::Path, expected: u32| {
@@ -63,7 +63,7 @@ fn sensitive_files_and_dirs_have_tight_modes() {
         );
     };
 
-    // Trigger a rbw-driven `Config::save()` so we verify rbw's writer
+    // Trigger a bwx-driven `Config::save()` so we verify bwx's writer
     // enforces 0o600 even if some earlier process (here: the harness
     // itself) pre-created config.json with a looser mode.
     harness.check(&["config", "set", "lock_timeout", "1800"]);
@@ -87,7 +87,7 @@ fn sensitive_files_and_dirs_have_tight_modes() {
         });
     check_mode(&db_file, 0o600);
 
-    // Enclosing dirs should be 0o700. rbw::dirs::make_all() creates
+    // Enclosing dirs should be 0o700. bwx::dirs::make_all() creates
     // these during startup.
     check_mode(&cfg_abs, 0o700);
     check_mode(&cache_abs, 0o700);

@@ -4,15 +4,15 @@ use crate::bin_error::{self, ContextExt as _};
 
 /// Per-CLI-process session identifier. Generated once on first access and
 /// attached to every outbound request so the agent can collapse a single
-/// `rbw <command>` invocation into one Touch ID prompt even when the
+/// `bwx <command>` invocation into one Touch ID prompt even when the
 /// command fires many `Decrypt`/`Encrypt` IPCs.
 fn session_id() -> String {
     static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    ID.get_or_init(|| rbw::uuid::new_v4().to_string()).clone()
+    ID.get_or_init(|| bwx::uuid::new_v4().to_string()).clone()
 }
 
 /// Human-readable command description surfaced to the user in biometric
-/// and pinentry prompts on the agent side. Set once at rbw startup from
+/// and pinentry prompts on the agent side. Set once at bwx startup from
 /// `main.rs`; read by `build_request` when each IPC is assembled.
 static PURPOSE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
@@ -20,8 +20,8 @@ pub fn set_purpose(s: String) {
     let _ = PURPOSE.set(s);
 }
 
-fn build_request(action: rbw::protocol::Action) -> rbw::protocol::Request {
-    rbw::protocol::Request::new_with_session(
+fn build_request(action: bwx::protocol::Action) -> bwx::protocol::Request {
+    bwx::protocol::Request::new_with_session(
         get_environment(),
         action,
         session_id(),
@@ -30,26 +30,26 @@ fn build_request(action: rbw::protocol::Action) -> rbw::protocol::Request {
 }
 
 pub fn register() -> bin_error::Result<()> {
-    simple_action(rbw::protocol::Action::Register)
+    simple_action(bwx::protocol::Action::Register)
 }
 
 pub fn login() -> bin_error::Result<()> {
-    simple_action(rbw::protocol::Action::Login)
+    simple_action(bwx::protocol::Action::Login)
 }
 
 pub fn unlock() -> bin_error::Result<()> {
-    simple_action(rbw::protocol::Action::Unlock)
+    simple_action(bwx::protocol::Action::Unlock)
 }
 
 pub fn unlocked() -> bin_error::Result<()> {
     match crate::sock::Sock::connect() {
         Ok(mut sock) => {
-            sock.send(&build_request(rbw::protocol::Action::CheckLock))?;
+            sock.send(&build_request(bwx::protocol::Action::CheckLock))?;
 
             let res = sock.recv()?;
             match res {
-                rbw::protocol::Response::Ack => Ok(()),
-                rbw::protocol::Response::Error { error } => {
+                bwx::protocol::Response::Ack => Ok(()),
+                bwx::protocol::Response::Error { error } => {
                     Err(bin_error::Error::msg(error))
                 }
                 _ => Err(bin_error::Error::msg(format!(
@@ -71,17 +71,17 @@ pub fn unlocked() -> bin_error::Result<()> {
 }
 
 pub fn sync() -> bin_error::Result<()> {
-    simple_action(rbw::protocol::Action::Sync)
+    simple_action(bwx::protocol::Action::Sync)
 }
 
 pub fn lock() -> bin_error::Result<()> {
-    simple_action(rbw::protocol::Action::Lock)
+    simple_action(bwx::protocol::Action::Lock)
 }
 
 pub fn quit() -> bin_error::Result<()> {
     match crate::sock::Sock::connect() {
         Ok(mut sock) => {
-            let pidfile = rbw::dirs::pid_file();
+            let pidfile = bwx::dirs::pid_file();
             let mut pid = String::new();
             std::fs::File::open(pidfile)?.read_to_string(&mut pid)?;
             let Some(pid) =
@@ -91,7 +91,7 @@ pub fn quit() -> bin_error::Result<()> {
                     "failed to read pid from pidfile",
                 ));
             };
-            sock.send(&build_request(rbw::protocol::Action::Quit))?;
+            sock.send(&build_request(bwx::protocol::Action::Quit))?;
             wait_for_exit(pid);
             Ok(())
         }
@@ -111,7 +111,7 @@ pub fn decrypt(
     org_id: Option<&str>,
 ) -> bin_error::Result<String> {
     let mut sock = connect()?;
-    sock.send(&build_request(rbw::protocol::Action::Decrypt {
+    sock.send(&build_request(bwx::protocol::Action::Decrypt {
         cipherstring: cipherstring.to_string(),
         entry_key: entry_key.map(std::string::ToString::to_string),
         org_id: org_id.map(std::string::ToString::to_string),
@@ -119,8 +119,8 @@ pub fn decrypt(
 
     let res = sock.recv()?;
     match res {
-        rbw::protocol::Response::Decrypt { plaintext } => Ok(plaintext),
-        rbw::protocol::Response::Error { error } => {
+        bwx::protocol::Response::Decrypt { plaintext } => Ok(plaintext),
+        bwx::protocol::Response::Error { error } => {
             Err(bin_error::Error::msg(format!("failed to decrypt: {error}")))
         }
         _ => Err(bin_error::Error::msg(format!(
@@ -134,15 +134,15 @@ pub fn encrypt(
     org_id: Option<&str>,
 ) -> bin_error::Result<String> {
     let mut sock = connect()?;
-    sock.send(&build_request(rbw::protocol::Action::Encrypt {
+    sock.send(&build_request(bwx::protocol::Action::Encrypt {
         plaintext: plaintext.to_string(),
         org_id: org_id.map(std::string::ToString::to_string),
     }))?;
 
     let res = sock.recv()?;
     match res {
-        rbw::protocol::Response::Encrypt { cipherstring } => Ok(cipherstring),
-        rbw::protocol::Response::Error { error } => {
+        bwx::protocol::Response::Encrypt { cipherstring } => Ok(cipherstring),
+        bwx::protocol::Response::Error { error } => {
             Err(bin_error::Error::msg(format!("failed to encrypt: {error}")))
         }
         _ => Err(bin_error::Error::msg(format!(
@@ -152,31 +152,31 @@ pub fn encrypt(
 }
 
 pub fn clipboard_store(text: &str) -> bin_error::Result<()> {
-    simple_action(rbw::protocol::Action::ClipboardStore {
+    simple_action(bwx::protocol::Action::ClipboardStore {
         text: text.to_string(),
     })
 }
 
 #[cfg(target_os = "macos")]
 pub fn touchid_enroll() -> bin_error::Result<()> {
-    simple_action(rbw::protocol::Action::TouchIdEnroll)
+    simple_action(bwx::protocol::Action::TouchIdEnroll)
 }
 
 pub fn touchid_disable() -> bin_error::Result<()> {
-    simple_action(rbw::protocol::Action::TouchIdDisable)
+    simple_action(bwx::protocol::Action::TouchIdDisable)
 }
 
 pub fn touchid_status() -> bin_error::Result<(bool, String, Option<String>)> {
     let mut sock = connect()?;
-    sock.send(&build_request(rbw::protocol::Action::TouchIdStatus))?;
+    sock.send(&build_request(bwx::protocol::Action::TouchIdStatus))?;
     let res = sock.recv()?;
     match res {
-        rbw::protocol::Response::TouchIdStatus {
+        bwx::protocol::Response::TouchIdStatus {
             enrolled,
             gate,
             keychain_label,
         } => Ok((enrolled, gate, keychain_label)),
-        rbw::protocol::Response::Error { error } => {
+        bwx::protocol::Response::Error { error } => {
             Err(bin_error::Error::msg(error))
         }
         _ => Err(bin_error::Error::msg(format!(
@@ -187,12 +187,12 @@ pub fn touchid_status() -> bin_error::Result<(bool, String, Option<String>)> {
 
 pub fn version() -> bin_error::Result<u32> {
     let mut sock = connect()?;
-    sock.send(&build_request(rbw::protocol::Action::Version))?;
+    sock.send(&build_request(bwx::protocol::Action::Version))?;
 
     let res = sock.recv()?;
     match res {
-        rbw::protocol::Response::Version { version } => Ok(version),
-        rbw::protocol::Response::Error { error } => Err(
+        bwx::protocol::Response::Version { version } => Ok(version),
+        bwx::protocol::Response::Error { error } => Err(
             bin_error::Error::msg(format!("failed to get version: {error}")),
         ),
         _ => Err(bin_error::Error::msg(format!(
@@ -201,15 +201,15 @@ pub fn version() -> bin_error::Result<u32> {
     }
 }
 
-fn simple_action(action: rbw::protocol::Action) -> bin_error::Result<()> {
+fn simple_action(action: bwx::protocol::Action) -> bin_error::Result<()> {
     let mut sock = connect()?;
 
     sock.send(&build_request(action))?;
 
     let res = sock.recv()?;
     match res {
-        rbw::protocol::Response::Ack => Ok(()),
-        rbw::protocol::Response::Error { error } => {
+        bwx::protocol::Response::Ack => Ok(()),
+        bwx::protocol::Response::Error { error } => {
             Err(bin_error::Error::msg(error))
         }
         _ => Err(bin_error::Error::msg(format!(
@@ -220,9 +220,9 @@ fn simple_action(action: rbw::protocol::Action) -> bin_error::Result<()> {
 
 fn connect() -> bin_error::Result<crate::sock::Sock> {
     crate::sock::Sock::connect().with_context(|| {
-        let log = rbw::dirs::agent_stderr_file();
+        let log = bwx::dirs::agent_stderr_file();
         format!(
-            "failed to connect to rbw-agent \
+            "failed to connect to bwx-agent \
             (this often means that the agent failed to start; \
             check {} for agent logs)",
             log.display()
@@ -239,8 +239,8 @@ fn wait_for_exit(pid: rustix::process::Pid) {
     }
 }
 
-fn get_environment() -> rbw::protocol::Environment {
-    let tty = std::env::var_os("RBW_TTY").or_else(|| {
+fn get_environment() -> bwx::protocol::Environment {
+    let tty = std::env::var_os("BWX_TTY").or_else(|| {
         rustix::termios::ttyname(std::io::stdin(), vec![])
             .ok()
             .map(|p| std::ffi::OsString::from_vec(p.as_bytes().to_vec()))
@@ -248,8 +248,8 @@ fn get_environment() -> rbw::protocol::Environment {
 
     let env_vars = std::env::vars_os()
         .filter(|(var_name, _)| {
-            (*rbw::protocol::ENVIRONMENT_VARIABLES_OS).contains(var_name)
+            (*bwx::protocol::ENVIRONMENT_VARIABLES_OS).contains(var_name)
         })
         .collect();
-    rbw::protocol::Environment::new(tty, env_vars)
+    bwx::protocol::Environment::new(tty, env_vars)
 }

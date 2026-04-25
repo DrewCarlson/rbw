@@ -5,7 +5,7 @@
 //! that a password we just stored is *not* greppable in the db file,
 //! while the ciphertext envelope markers (`"2.<iv>|<ct>|<mac>"`) are.
 
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -16,7 +16,7 @@ fn db_file_contains_ciphertext_not_plaintext() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     // Use a password marker distinctive enough that we can grep for it
@@ -28,7 +28,7 @@ fn db_file_contains_ciphertext_not_plaintext() {
     );
     harness.check(&["sync"]);
 
-    // Locate db_*.json under the harness data dir. rbw resolves this
+    // Locate db_*.json under the harness data dir. bwx resolves this
     // dir from `XDG_DATA_HOME` on Linux and `$HOME/Library/…` on
     // macOS; the harness sets both, so we just read whichever applies.
     let env: std::collections::HashMap<_, _> = harness
@@ -42,13 +42,13 @@ fn db_file_contains_ciphertext_not_plaintext() {
                 .unwrap_or_else(|| panic!("{k} not in harness env")),
         )
     };
-    // `rbw::dirs::db_file()` resolves under `cache_dir` — `XDG_CACHE_HOME`
-    // on Linux, `$HOME/Library/Caches/rbw` on macOS. The filename is
+    // `bwx::dirs::db_file()` resolves under `cache_dir` — `XDG_CACHE_HOME`
+    // on Linux, `$HOME/Library/Caches/bwx` on macOS. The filename is
     // `<urlencoded-server>:<email>.json` (no `db_` prefix).
     let cache_dir = if cfg!(target_os = "macos") {
-        get("HOME").join("Library/Caches/rbw")
+        get("HOME").join("Library/Caches/bwx")
     } else {
-        get("XDG_CACHE_HOME").join("rbw")
+        get("XDG_CACHE_HOME").join("bwx")
     };
 
     let db_path = std::fs::read_dir(&cache_dir)

@@ -2,21 +2,21 @@ use crate::bin_error::{self, ContextExt as _};
 use sha2::Digest as _;
 
 /// Gate a pending sensitive response on a Touch ID prompt if the user has
-/// opted in. A `session_id` (assigned by the rbw CLI once per invocation)
+/// opted in. A `session_id` (assigned by the bwx CLI once per invocation)
 /// lets us coalesce the many `Decrypt`/`Encrypt` IPCs fired by a single
-/// `rbw <command>` into one prompt. Sessions expire after
+/// `bwx <command>` into one prompt. Sessions expire after
 /// `TOUCHID_SESSION_TTL` of inactivity, and are flushed whenever the
 /// vault is locked. Cancelling the prompt returns a clean error. No
 /// behavior on non-macOS builds.
 async fn enforce_touchid_gate(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-    kind: rbw::touchid::Kind,
+    kind: bwx::touchid::Kind,
     session_id: Option<&str>,
     purpose: Option<&str>,
 ) -> bin_error::Result<()> {
-    let gate = rbw::config::Config::load()
-        .map_or(rbw::touchid::Gate::Off, |c| c.touchid_gate);
-    if !rbw::touchid::gate_applies(gate, kind) {
+    let gate = bwx::config::Config::load()
+        .map_or(bwx::touchid::Gate::Off, |c| c.touchid_gate);
+    if !bwx::touchid::gate_applies(gate, kind) {
         return Ok(());
     }
     if let Some(id) = session_id {
@@ -30,17 +30,17 @@ async fn enforce_touchid_gate(
         // so the "vault stays locked at rest" invariant holds — a new
         // Touch ID prompt below will re-load them from Keychain.
         #[cfg(target_os = "macos")]
-        if rbw::touchid::blob::Blob::exists() {
+        if bwx::touchid::blob::Blob::exists() {
             s.priv_key = None;
             s.org_keys = None;
         }
         drop(s);
     }
     let reason = purpose.map_or_else(
-        || format!("rbw: authorize {kind:?} access"),
-        |p| format!("rbw: authorize {p}"),
+        || format!("bwx: authorize {kind:?} access"),
+        |p| format!("bwx: authorize {p}"),
     );
-    let ok = rbw::touchid::require_presence(&reason)
+    let ok = bwx::touchid::require_presence(&reason)
         .await
         .map_err(|e| bin_error::Error::msg(e.to_string()))?;
     if !ok {
@@ -72,9 +72,9 @@ async fn enforce_touchid_gate(
 
 pub async fn register(
     sock: &mut crate::sock::Sock,
-    environment: &rbw::protocol::Environment,
+    environment: &bwx::protocol::Environment,
 ) -> bin_error::Result<()> {
-    let db = load_db().await.unwrap_or_else(|_| rbw::db::Db::new());
+    let db = load_db().await.unwrap_or_else(|_| bwx::db::Db::new());
 
     if db.needs_login() {
         let url_str = config_base_url().await?;
@@ -82,7 +82,7 @@ pub async fn register(
             .context("failed to parse base url")?;
         let Some(host) = url.host_str() else {
             return Err(bin_error::Error::msg(format!(
-                "couldn't find host in rbw base url {url_str}"
+                "couldn't find host in bwx base url {url_str}"
             )));
         };
 
@@ -97,7 +97,7 @@ pub async fn register(
             } else {
                 None
             };
-            let client_id = rbw::pinentry::getpin(
+            let client_id = bwx::pinentry::getpin(
                 &config_pinentry().await?,
                 "API key client__id",
                 &format!("Log in to {host}"),
@@ -107,7 +107,7 @@ pub async fn register(
             )
             .await
             .context("failed to read client_id from pinentry")?;
-            let client_secret = rbw::pinentry::getpin(
+            let client_secret = bwx::pinentry::getpin(
                 &config_pinentry().await?,
                 "API key client__secret",
                 &format!("Log in to {host}"),
@@ -117,14 +117,14 @@ pub async fn register(
             )
             .await
             .context("failed to read client_secret from pinentry")?;
-            let apikey = rbw::locked::ApiKey::new(client_id, client_secret);
-            match rbw::actions::register(&email, apikey.clone()).await {
+            let apikey = bwx::locked::ApiKey::new(client_id, client_secret);
+            match bwx::actions::register(&email, apikey.clone()).await {
                 Ok(()) => {
                     break;
                 }
-                Err(rbw::error::Error::IncorrectPassword { message }) => {
+                Err(bwx::error::Error::IncorrectPassword { message }) => {
                     if i == 3 {
-                        return Err(rbw::error::Error::IncorrectPassword {
+                        return Err(bwx::error::Error::IncorrectPassword {
                             message,
                         })
                         .context("failed to log in to bitwarden instance");
@@ -147,9 +147,9 @@ pub async fn register(
 pub async fn login(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-    environment: &rbw::protocol::Environment,
+    environment: &bwx::protocol::Environment,
 ) -> bin_error::Result<()> {
-    let db = load_db().await.unwrap_or_else(|_| rbw::db::Db::new());
+    let db = load_db().await.unwrap_or_else(|_| bwx::db::Db::new());
 
     if db.needs_login() {
         let url_str = config_base_url().await?;
@@ -157,7 +157,7 @@ pub async fn login(
             .context("failed to parse base url")?;
         let Some(host) = url.host_str() else {
             return Err(bin_error::Error::msg(format!(
-                "couldn't find host in rbw base url {url_str}"
+                "couldn't find host in bwx base url {url_str}"
             )));
         };
 
@@ -173,14 +173,14 @@ pub async fn login(
                 None
             };
             let password = prompt_master_password(
-                "Log in to rbw",
+                "Log in to bwx",
                 &format!("Enter your Bitwarden master password for {host}"),
                 environment,
                 err.as_deref(),
             )
             .await
             .context("failed to read master password")?;
-            match rbw::actions::login(&email, password.clone(), None, None)
+            match bwx::actions::login(&email, password.clone(), None, None)
                 .await
             {
                 Ok((
@@ -208,25 +208,25 @@ pub async fn login(
                     .await?;
                     break 'attempts;
                 }
-                Err(rbw::error::Error::TwoFactorRequired {
+                Err(bwx::error::Error::TwoFactorRequired {
                     providers,
                     sso_email_2fa_session_token,
                 }) => {
                     let supported_types = vec![
-                        rbw::api::TwoFactorProviderType::Authenticator,
-                        rbw::api::TwoFactorProviderType::Yubikey,
-                        rbw::api::TwoFactorProviderType::Email,
+                        bwx::api::TwoFactorProviderType::Authenticator,
+                        bwx::api::TwoFactorProviderType::Yubikey,
+                        bwx::api::TwoFactorProviderType::Email,
                     ];
 
                     for provider in supported_types {
                         if providers.contains(&provider) {
                             if provider
-                                == rbw::api::TwoFactorProviderType::Email
+                                == bwx::api::TwoFactorProviderType::Email
                             {
                                 if let Some(sso_email_2fa_session_token) =
                                     sso_email_2fa_session_token
                                 {
-                                    rbw::actions::send_two_factor_email(
+                                    bwx::actions::send_two_factor_email(
                                         &email,
                                         &sso_email_2fa_session_token,
                                     )
@@ -269,9 +269,9 @@ pub async fn login(
                         "unsupported two factor methods: {providers:?}"
                     )));
                 }
-                Err(rbw::error::Error::IncorrectPassword { message }) => {
+                Err(bwx::error::Error::IncorrectPassword { message }) => {
                     if i == 3 {
-                        return Err(rbw::error::Error::IncorrectPassword {
+                        return Err(bwx::error::Error::IncorrectPassword {
                             message,
                         })
                         .context("failed to log in to bitwarden instance");
@@ -292,14 +292,14 @@ pub async fn login(
 }
 
 async fn two_factor(
-    environment: &rbw::protocol::Environment,
+    environment: &bwx::protocol::Environment,
     email: &str,
-    password: rbw::locked::Password,
-    provider: rbw::api::TwoFactorProviderType,
+    password: bwx::locked::Password,
+    provider: bwx::api::TwoFactorProviderType,
 ) -> bin_error::Result<(
     String,
     String,
-    rbw::api::KdfType,
+    bwx::api::KdfType,
     u32,
     Option<u32>,
     Option<u32>,
@@ -325,7 +325,7 @@ async fn two_factor(
         .context("failed to read 2FA code")?;
         let code = std::str::from_utf8(code.password())
             .context("code was not valid utf8")?;
-        match rbw::actions::login(
+        match bwx::actions::login(
             email,
             password.clone(),
             Some(code),
@@ -352,9 +352,9 @@ async fn two_factor(
                     protected_key,
                 ))
             }
-            Err(rbw::error::Error::IncorrectPassword { message }) => {
+            Err(bwx::error::Error::IncorrectPassword { message }) => {
                 if i == 3 {
-                    return Err(rbw::error::Error::IncorrectPassword {
+                    return Err(bwx::error::Error::IncorrectPassword {
                         message,
                     })
                     .context("failed to log in to bitwarden instance");
@@ -362,10 +362,10 @@ async fn two_factor(
                 err_msg = Some(message);
             }
             // can get this if the user passes an empty string
-            Err(rbw::error::Error::TwoFactorRequired { .. }) => {
+            Err(bwx::error::Error::TwoFactorRequired { .. }) => {
                 let message = "TOTP code is not a number".to_string();
                 if i == 3 {
-                    return Err(rbw::error::Error::IncorrectPassword {
+                    return Err(bwx::error::Error::IncorrectPassword {
                         message,
                     })
                     .context("failed to log in to bitwarden instance");
@@ -386,13 +386,13 @@ async fn login_success(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
     access_token: String,
     refresh_token: String,
-    kdf: rbw::api::KdfType,
+    kdf: bwx::api::KdfType,
     iterations: u32,
     memory: Option<u32>,
     parallelism: Option<u32>,
     protected_key: String,
-    password: rbw::locked::Password,
-    mut db: rbw::db::Db,
+    password: bwx::locked::Password,
+    mut db: bwx::db::Db,
     email: String,
 ) -> bin_error::Result<()> {
     db.access_token = Some(access_token.clone());
@@ -413,7 +413,7 @@ async fn login_success(
         ));
     };
 
-    let res = rbw::actions::unlock(
+    let res = bwx::actions::unlock(
         &email,
         &password,
         kdf,
@@ -450,11 +450,11 @@ async fn login_success(
 async fn prompt_master_password(
     title: &str,
     pinentry_desc: &str,
-    environment: &rbw::protocol::Environment,
+    environment: &bwx::protocol::Environment,
     err: Option<&str>,
-) -> bin_error::Result<rbw::locked::Password> {
+) -> bin_error::Result<bwx::locked::Password> {
     let use_native = cfg!(target_os = "macos")
-        && rbw::config::Config::load_async()
+        && bwx::config::Config::load_async()
             .await
             .map_or(cfg!(target_os = "macos"), |c| c.macos_unlock_dialog);
 
@@ -468,13 +468,13 @@ async fn prompt_master_password(
         // osascript display dialog is synchronous / blocking; run on a
         // blocking thread so we don't stall the tokio runtime.
         match tokio::task::spawn_blocking(move || {
-            rbw::pinentry_native::prompt_master_password(&title, &message)
+            bwx::pinentry_native::prompt_master_password(&title, &message)
         })
         .await
         .map_err(|e| bin_error::Error::msg(format!("join: {e}")))?
         {
             Ok(pw) => return Ok(pw),
-            Err(rbw::error::Error::NativePromptUnsupported) => {
+            Err(bwx::error::Error::NativePromptUnsupported) => {
                 // Shouldn't happen on macOS; fall through to pinentry.
             }
             Err(e) => return Err(e.into()),
@@ -482,7 +482,7 @@ async fn prompt_master_password(
     }
 
     let pinentry = config_pinentry().await?;
-    rbw::pinentry::getpin(
+    bwx::pinentry::getpin(
         &pinentry,
         title,
         pinentry_desc,
@@ -503,11 +503,11 @@ async fn prompt_two_factor_code(
     title: &str,
     message: &str,
     grab: bool,
-    environment: &rbw::protocol::Environment,
+    environment: &bwx::protocol::Environment,
     err: Option<&str>,
-) -> bin_error::Result<rbw::locked::Password> {
+) -> bin_error::Result<bwx::locked::Password> {
     let use_native = cfg!(target_os = "macos")
-        && rbw::config::Config::load_async()
+        && bwx::config::Config::load_async()
             .await
             .map_or(cfg!(target_os = "macos"), |c| c.macos_unlock_dialog);
 
@@ -518,36 +518,36 @@ async fn prompt_two_factor_code(
         );
         let title = title.to_string();
         match tokio::task::spawn_blocking(move || {
-            rbw::pinentry_native::prompt(
+            bwx::pinentry_native::prompt(
                 &title,
                 &body,
                 "Submit",
-                rbw::pinentry_native::InputKind::Secret,
+                bwx::pinentry_native::InputKind::Secret,
             )
         })
         .await
         .map_err(|e| bin_error::Error::msg(format!("join: {e}")))?
         {
             Ok(code) => return Ok(code),
-            Err(rbw::error::Error::NativePromptUnsupported) => {}
+            Err(bwx::error::Error::NativePromptUnsupported) => {}
             Err(e) => return Err(e.into()),
         }
     }
 
     let pinentry = config_pinentry().await?;
-    rbw::pinentry::getpin(&pinentry, title, message, err, environment, grab)
+    bwx::pinentry::getpin(&pinentry, title, message, err, environment, grab)
         .await
         .context("failed to read code from pinentry")
 }
 
 /// Convenience wrapper for the unlock path.
 async fn prompt_unlock_password(
-    environment: &rbw::protocol::Environment,
+    environment: &bwx::protocol::Environment,
     err: Option<&str>,
-) -> bin_error::Result<rbw::locked::Password> {
-    let profile = rbw::dirs::profile();
+) -> bin_error::Result<bwx::locked::Password> {
+    let profile = bwx::dirs::profile();
     prompt_master_password(
-        "Unlock rbw vault",
+        "Unlock bwx vault",
         &format!("Unlock the local database for '{profile}'"),
         environment,
         err,
@@ -557,7 +557,7 @@ async fn prompt_unlock_password(
 
 async fn unlock_state(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-    environment: &rbw::protocol::Environment,
+    environment: &bwx::protocol::Environment,
 ) -> bin_error::Result<()> {
     if state.lock().await.needs_unlock() {
         // Prefer Touch ID-based unlock if the user has enrolled and the
@@ -614,7 +614,7 @@ async fn unlock_state(
                 prompt_unlock_password(environment, err.as_deref())
                     .await
                     .context("failed to read master password")?;
-            match rbw::actions::unlock(
+            match bwx::actions::unlock(
                 &email,
                 &password,
                 kdf,
@@ -629,9 +629,9 @@ async fn unlock_state(
                     unlock_success(state, keys, org_keys).await?;
                     break;
                 }
-                Err(rbw::error::Error::IncorrectPassword { message }) => {
+                Err(bwx::error::Error::IncorrectPassword { message }) => {
                     if i == 3 {
-                        return Err(rbw::error::Error::IncorrectPassword {
+                        return Err(bwx::error::Error::IncorrectPassword {
                             message,
                         })
                         .context("failed to unlock database");
@@ -649,7 +649,7 @@ async fn unlock_state(
 pub async fn unlock(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-    environment: &rbw::protocol::Environment,
+    environment: &bwx::protocol::Environment,
 ) -> bin_error::Result<()> {
     unlock_state(state, environment).await?;
 
@@ -660,8 +660,8 @@ pub async fn unlock(
 
 async fn unlock_success(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-    keys: rbw::locked::Keys,
-    org_keys: std::collections::HashMap<String, rbw::locked::Keys>,
+    keys: bwx::locked::Keys,
+    org_keys: std::collections::HashMap<String, bwx::locked::Keys>,
 ) -> bin_error::Result<()> {
     let mut state = state.lock().await;
     state.priv_key = Some(keys);
@@ -696,27 +696,27 @@ impl TouchIdUnlockOutcome {
 async fn try_unlock_via_touchid(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
 ) -> TouchIdUnlockOutcome {
-    let gate = rbw::config::Config::load()
-        .map_or(rbw::touchid::Gate::Off, |c| c.touchid_gate);
-    if matches!(gate, rbw::touchid::Gate::Off) {
+    let gate = bwx::config::Config::load()
+        .map_or(bwx::touchid::Gate::Off, |c| c.touchid_gate);
+    if matches!(gate, bwx::touchid::Gate::Off) {
         log::debug!("touchid: gate is off; skipping Keychain unlock");
         return TouchIdUnlockOutcome::Fallback(
             "Touch ID gate disabled (touchid_gate=off)",
         );
     }
-    let Ok(blob) = rbw::touchid::blob::Blob::load() else {
+    let Ok(blob) = bwx::touchid::blob::Blob::load() else {
         log::debug!("touchid: no enrollment blob on disk");
         return TouchIdUnlockOutcome::Fallback(
-            "no Touch ID enrollment (run `rbw touchid enroll`)",
+            "no Touch ID enrollment (run `bwx touchid enroll`)",
         );
     };
     log::debug!(
         "touchid: attempting Keychain load for label {label}",
         label = blob.keychain_label
     );
-    let prompt = format!("Unlock the {} vault", rbw::dirs::profile());
+    let prompt = format!("Unlock the {} vault", bwx::dirs::profile());
     let seed =
-        match rbw::touchid::keychain::load(&blob.keychain_label, &prompt) {
+        match bwx::touchid::keychain::load(&blob.keychain_label, &prompt) {
             Ok(bytes) if bytes.data().len() == 64 => bytes,
             Ok(other) => {
                 log::warn!(
@@ -727,24 +727,24 @@ async fn try_unlock_via_touchid(
                     "Touch ID wrapper key corrupted; re-enroll",
                 );
             }
-            Err(rbw::touchid::keychain::Error::UserCancelled) => {
+            Err(bwx::touchid::keychain::Error::UserCancelled) => {
                 log::debug!("touchid: user cancelled Keychain prompt");
                 return TouchIdUnlockOutcome::Fallback("Touch ID cancelled");
             }
-            Err(rbw::touchid::keychain::Error::Invalidated) => {
+            Err(bwx::touchid::keychain::Error::Invalidated) => {
                 log::warn!(
                     "touchid: biometric set changed; master password \
                  required to re-enroll"
                 );
                 return TouchIdUnlockOutcome::Fallback(
-                    "biometric set changed — run `rbw touchid enroll` \
+                    "biometric set changed — run `bwx touchid enroll` \
                  after unlocking to re-bind",
                 );
             }
-            Err(rbw::touchid::keychain::Error::NotFound) => {
+            Err(bwx::touchid::keychain::Error::NotFound) => {
                 log::warn!(
                     "touchid: enrollment blob present but Keychain item \
-                 missing; likely deleted outside rbw"
+                 missing; likely deleted outside bwx"
                 );
                 return TouchIdUnlockOutcome::Fallback(
                     "Touch ID Keychain item missing; re-enroll",
@@ -758,9 +758,9 @@ async fn try_unlock_via_touchid(
             }
         };
     let wrapper_keys =
-        rbw::touchid::blob::keys_from_wrapper_seed(seed.data());
+        bwx::touchid::blob::keys_from_wrapper_seed(seed.data());
 
-    let Ok(cs) = rbw::cipherstring::CipherString::new(&blob.wrapped_priv_key)
+    let Ok(cs) = bwx::cipherstring::CipherString::new(&blob.wrapped_priv_key)
     else {
         log::warn!("touchid: wrapped priv_key cipherstring malformed");
         return TouchIdUnlockOutcome::Fallback(
@@ -773,11 +773,11 @@ async fn try_unlock_via_touchid(
             "Touch ID blob decrypt failed; re-enroll",
         );
     };
-    let priv_key = rbw::locked::Keys::new(priv_bytes);
+    let priv_key = bwx::locked::Keys::new(priv_bytes);
 
     let mut org_keys = std::collections::HashMap::new();
     for (oid, wrapped) in &blob.wrapped_org_keys {
-        let Ok(cs) = rbw::cipherstring::CipherString::new(wrapped) else {
+        let Ok(cs) = bwx::cipherstring::CipherString::new(wrapped) else {
             log::warn!("touchid: wrapped org_key for {oid} malformed");
             return TouchIdUnlockOutcome::Fallback(
                 "Touch ID blob corrupted; re-enroll",
@@ -789,7 +789,7 @@ async fn try_unlock_via_touchid(
                 "Touch ID blob decrypt failed; re-enroll",
             );
         };
-        org_keys.insert(oid.clone(), rbw::locked::Keys::new(bytes));
+        org_keys.insert(oid.clone(), bwx::locked::Keys::new(bytes));
     }
 
     let mut s = state.lock().await;
@@ -857,7 +857,7 @@ pub async fn sync(
     let (
         access_token,
         (protected_key, protected_private_key, protected_org_keys, entries),
-    ) = rbw::actions::sync(&access_token, &refresh_token)
+    ) = bwx::actions::sync(&access_token, &refresh_token)
         .await
         .context("failed to sync database from server")?;
     state.lock().await.set_master_password_reprompt(&entries);
@@ -883,7 +883,7 @@ pub async fn sync(
 
 async fn decrypt_cipher(
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-    environment: &rbw::protocol::Environment,
+    environment: &bwx::protocol::Environment,
     cipherstring: &str,
     entry_key: Option<&str>,
     org_id: Option<&str>,
@@ -900,9 +900,9 @@ async fn decrypt_cipher(
     };
     let entry_key = if let Some(entry_key) = entry_key {
         let key_cipherstring =
-            rbw::cipherstring::CipherString::new(entry_key)
+            bwx::cipherstring::CipherString::new(entry_key)
                 .context("failed to parse individual item encryption key")?;
-        Some(rbw::locked::Keys::new(
+        Some(bwx::locked::Keys::new(
             key_cipherstring.decrypt_locked_symmetric(keys).context(
                 "failed to decrypt individual item encryption key",
             )?,
@@ -965,7 +965,7 @@ async fn decrypt_cipher(
             )
             .await
             .context("failed to read master password")?;
-            match rbw::actions::unlock(
+            match bwx::actions::unlock(
                 &email,
                 &password,
                 kdf,
@@ -979,9 +979,9 @@ async fn decrypt_cipher(
                 Ok(_) => {
                     break;
                 }
-                Err(rbw::error::Error::IncorrectPassword { message }) => {
+                Err(bwx::error::Error::IncorrectPassword { message }) => {
                     if i == 3 {
-                        return Err(rbw::error::Error::IncorrectPassword {
+                        return Err(bwx::error::Error::IncorrectPassword {
                             message,
                         })
                         .context("failed to unlock database");
@@ -993,7 +993,7 @@ async fn decrypt_cipher(
         }
     }
 
-    let cipherstring = rbw::cipherstring::CipherString::new(cipherstring)
+    let cipherstring = bwx::cipherstring::CipherString::new(cipherstring)
         .context("failed to parse encrypted secret")?;
     let plaintext = String::from_utf8(
         cipherstring
@@ -1008,7 +1008,7 @@ async fn decrypt_cipher(
 pub async fn decrypt(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
-    environment: &rbw::protocol::Environment,
+    environment: &bwx::protocol::Environment,
     cipherstring: &str,
     entry_key: Option<&str>,
     org_id: Option<&str>,
@@ -1017,7 +1017,7 @@ pub async fn decrypt(
 ) -> bin_error::Result<()> {
     enforce_touchid_gate(
         state.clone(),
-        rbw::touchid::Kind::VaultSecret,
+        bwx::touchid::Kind::VaultSecret,
         session_id,
         purpose,
     )
@@ -1040,7 +1040,7 @@ pub async fn encrypt(
 ) -> bin_error::Result<()> {
     enforce_touchid_gate(
         state.clone(),
-        rbw::touchid::Kind::VaultSecret,
+        bwx::touchid::Kind::VaultSecret,
         session_id,
         purpose,
     )
@@ -1051,7 +1051,7 @@ pub async fn encrypt(
             "failed to find encryption keys in in-memory state",
         ));
     };
-    let cipherstring = rbw::cipherstring::CipherString::encrypt_symmetric(
+    let cipherstring = bwx::cipherstring::CipherString::encrypt_symmetric(
         keys,
         plaintext.as_bytes(),
     )
@@ -1072,7 +1072,7 @@ pub async fn clipboard_store(
 ) -> bin_error::Result<()> {
     enforce_touchid_gate(
         state.clone(),
-        rbw::touchid::Kind::VaultSecret,
+        bwx::touchid::Kind::VaultSecret,
         session_id,
         purpose,
     )
@@ -1099,7 +1099,7 @@ pub async fn clipboard_store(
     _session_id: Option<&str>,
     _purpose: Option<&str>,
 ) -> bin_error::Result<()> {
-    sock.send(&rbw::protocol::Response::Error {
+    sock.send(&bwx::protocol::Response::Error {
         error: "clipboard not supported".to_string(),
     })
     .await?;
@@ -1108,8 +1108,8 @@ pub async fn clipboard_store(
 }
 
 pub async fn version(sock: &mut crate::sock::Sock) -> bin_error::Result<()> {
-    sock.send(&rbw::protocol::Response::Version {
-        version: rbw::protocol::VERSION,
+    sock.send(&bwx::protocol::Response::Version {
+        version: bwx::protocol::VERSION,
     })
     .await?;
 
@@ -1117,7 +1117,7 @@ pub async fn version(sock: &mut crate::sock::Sock) -> bin_error::Result<()> {
 }
 
 async fn respond_ack(sock: &mut crate::sock::Sock) -> bin_error::Result<()> {
-    sock.send(&rbw::protocol::Response::Ack).await?;
+    sock.send(&bwx::protocol::Response::Ack).await?;
 
     Ok(())
 }
@@ -1135,7 +1135,7 @@ pub async fn touchid_enroll(
         if s.needs_unlock() {
             return Err(bin_error::Error::msg(
                 "cannot enroll Touch ID while vault is locked; \
-                 run `rbw unlock` first",
+                 run `bwx unlock` first",
             ));
         }
     }
@@ -1144,13 +1144,13 @@ pub async fn touchid_enroll(
     // `locked::Vec` (mlocked + zeroized on drop) so the seed never sits
     // in ordinary heap / stack memory that could be recovered from a
     // core dump or swap.
-    let mut seed = rbw::locked::Vec::new();
+    let mut seed = bwx::locked::Vec::new();
     seed.extend(std::iter::repeat_n(0u8, 64));
     rand::rng().fill_bytes(seed.data_mut());
     let wrapper_keys =
-        rbw::touchid::blob::keys_from_wrapper_seed(seed.data());
+        bwx::touchid::blob::keys_from_wrapper_seed(seed.data());
 
-    let label = format!("rbw-touchid-{}", rbw::uuid::new_v4());
+    let label = format!("bwx-touchid-{}", bwx::uuid::new_v4());
 
     let (wrapped_priv_key, wrapped_org_keys) = {
         let s = state.lock().await;
@@ -1161,7 +1161,7 @@ pub async fn touchid_enroll(
             bin_error::Error::msg("org_keys missing post-unlock")
         })?;
         let wrapped_priv =
-            rbw::cipherstring::CipherString::encrypt_symmetric(
+            bwx::cipherstring::CipherString::encrypt_symmetric(
                 &wrapper_keys,
                 priv_key.as_bytes(),
             )
@@ -1171,7 +1171,7 @@ pub async fn touchid_enroll(
         for (oid, k) in org_keys {
             wrapped_org.insert(
                 oid.clone(),
-                rbw::cipherstring::CipherString::encrypt_symmetric(
+                bwx::cipherstring::CipherString::encrypt_symmetric(
                     &wrapper_keys,
                     k.as_bytes(),
                 )
@@ -1183,9 +1183,9 @@ pub async fn touchid_enroll(
     };
 
     // If a prior enrollment exists, remove it first — we're rotating.
-    if let Ok(existing) = rbw::touchid::blob::Blob::load() {
+    if let Ok(existing) = bwx::touchid::blob::Blob::load() {
         if let Err(e) =
-            rbw::touchid::keychain::delete(&existing.keychain_label)
+            bwx::touchid::keychain::delete(&existing.keychain_label)
         {
             log::warn!(
                 "touchid: failed to delete previous Keychain item \
@@ -1195,10 +1195,10 @@ pub async fn touchid_enroll(
             );
         }
     }
-    rbw::touchid::keychain::store(&label, seed.data())
+    bwx::touchid::keychain::store(&label, seed.data())
         .map_err(|e| bin_error::Error::msg(e.to_string()))?;
 
-    let blob = rbw::touchid::blob::Blob {
+    let blob = bwx::touchid::blob::Blob {
         keychain_label: label,
         wrapped_priv_key,
         wrapped_org_keys,
@@ -1224,8 +1224,8 @@ pub async fn touchid_disable(
     sock: &mut crate::sock::Sock,
 ) -> bin_error::Result<()> {
     #[cfg(target_os = "macos")]
-    if let Ok(blob) = rbw::touchid::blob::Blob::load() {
-        if let Err(e) = rbw::touchid::keychain::delete(&blob.keychain_label) {
+    if let Ok(blob) = bwx::touchid::blob::Blob::load() {
+        if let Err(e) = bwx::touchid::keychain::delete(&blob.keychain_label) {
             log::warn!(
                 "touchid: failed to delete Keychain item {label}: {e} \
                  (blob will still be removed; Keychain item may be \
@@ -1235,7 +1235,7 @@ pub async fn touchid_disable(
             );
         }
     }
-    rbw::touchid::blob::Blob::remove().context("remove touchid blob")?;
+    bwx::touchid::blob::Blob::remove().context("remove touchid blob")?;
     respond_ack(sock).await?;
     Ok(())
 }
@@ -1243,13 +1243,13 @@ pub async fn touchid_disable(
 pub async fn touchid_status(
     sock: &mut crate::sock::Sock,
 ) -> bin_error::Result<()> {
-    let config = rbw::config::Config::load()
-        .unwrap_or_else(|_| rbw::config::Config::new());
-    let (enrolled, label) = match rbw::touchid::blob::Blob::load() {
+    let config = bwx::config::Config::load()
+        .unwrap_or_else(|_| bwx::config::Config::new());
+    let (enrolled, label) = match bwx::touchid::blob::Blob::load() {
         Ok(blob) => (true, Some(blob.keychain_label)),
         Err(_) => (false, None),
     };
-    sock.send(&rbw::protocol::Response::TouchIdStatus {
+    sock.send(&bwx::protocol::Response::TouchIdStatus {
         enrolled,
         gate: config.touchid_gate.to_string(),
         keychain_label: label,
@@ -1262,7 +1262,7 @@ async fn respond_decrypt(
     sock: &mut crate::sock::Sock,
     plaintext: String,
 ) -> bin_error::Result<()> {
-    sock.send(&rbw::protocol::Response::Decrypt { plaintext })
+    sock.send(&bwx::protocol::Response::Decrypt { plaintext })
         .await?;
 
     Ok(())
@@ -1272,14 +1272,14 @@ async fn respond_encrypt(
     sock: &mut crate::sock::Sock,
     cipherstring: String,
 ) -> bin_error::Result<()> {
-    sock.send(&rbw::protocol::Response::Encrypt { cipherstring })
+    sock.send(&bwx::protocol::Response::Encrypt { cipherstring })
         .await?;
 
     Ok(())
 }
 
 async fn config_email() -> bin_error::Result<String> {
-    let config = rbw::config::Config::load_async().await?;
+    let config = bwx::config::Config::load_async().await?;
     config.email.map_or_else(
         || {
             Err(bin_error::Error::msg(
@@ -1290,10 +1290,10 @@ async fn config_email() -> bin_error::Result<String> {
     )
 }
 
-async fn load_db() -> bin_error::Result<rbw::db::Db> {
-    let config = rbw::config::Config::load_async().await?;
+async fn load_db() -> bin_error::Result<bwx::db::Db> {
+    let config = bwx::config::Config::load_async().await?;
     if let Some(email) = &config.email {
-        Ok(rbw::db::Db::load_async(&config.server_name(), email).await?)
+        Ok(bwx::db::Db::load_async(&config.server_name(), email).await?)
     } else {
         Err(bin_error::Error::msg(
             "failed to find email address in config",
@@ -1301,8 +1301,8 @@ async fn load_db() -> bin_error::Result<rbw::db::Db> {
     }
 }
 
-async fn save_db(db: &rbw::db::Db) -> bin_error::Result<()> {
-    let config = rbw::config::Config::load_async().await?;
+async fn save_db(db: &bwx::db::Db) -> bin_error::Result<()> {
+    let config = bwx::config::Config::load_async().await?;
     if let Some(email) = &config.email {
         db.save_async(&config.server_name(), email).await?;
         Ok(())
@@ -1314,12 +1314,12 @@ async fn save_db(db: &rbw::db::Db) -> bin_error::Result<()> {
 }
 
 async fn config_base_url() -> bin_error::Result<String> {
-    let config = rbw::config::Config::load_async().await?;
+    let config = bwx::config::Config::load_async().await?;
     Ok(config.base_url())
 }
 
 async fn config_pinentry() -> bin_error::Result<String> {
-    let config = rbw::config::Config::load_async().await?;
+    let config = bwx::config::Config::load_async().await?;
     Ok(config.pinentry)
 }
 
@@ -1330,11 +1330,11 @@ pub async fn subscribe_to_notifications(
         return Ok(());
     }
 
-    let config = rbw::config::Config::load_async()
+    let config = bwx::config::Config::load_async()
         .await
         .context("Config is missing")?;
     let email = config.email.clone().context("Config is missing email")?;
-    let db = rbw::db::Db::load_async(config.server_name().as_str(), &email)
+    let db = bwx::db::Db::load_async(config.server_name().as_str(), &email)
         .await?;
     let access_token =
         db.access_token.context("Error getting access token")?;
@@ -1372,7 +1372,7 @@ pub async fn get_ssh_public_keys(
     let mut pubkeys = Vec::new();
 
     for entry in db.entries {
-        if let rbw::db::EntryData::SshKey {
+        if let bwx::db::EntryData::SshKey {
             public_key: Some(encrypted),
             ..
         } = &entry.data
@@ -1422,7 +1422,7 @@ pub async fn locate_ssh_private_key(
     let db = load_db().await?;
 
     for entry in db.entries {
-        if let rbw::db::EntryData::SshKey {
+        if let bwx::db::EntryData::SshKey {
             private_key,
             public_key,
             ..

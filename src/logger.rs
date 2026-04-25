@@ -108,16 +108,16 @@ mod tests {
 
     #[test]
     fn default_and_modules() {
-        let (d, m) = parse_spec("info,rbw=debug", LevelFilter::Warn);
+        let (d, m) = parse_spec("info,bwx=debug", LevelFilter::Warn);
         assert_eq!(d, LevelFilter::Info);
-        assert_eq!(m, vec![("rbw".to_string(), LevelFilter::Debug)]);
+        assert_eq!(m, vec![("bwx".to_string(), LevelFilter::Debug)]);
     }
 
     #[test]
     fn trailing_default() {
-        let (d, m) = parse_spec("rbw_agent=trace,warn", LevelFilter::Info);
+        let (d, m) = parse_spec("bwx_agent=trace,warn", LevelFilter::Info);
         assert_eq!(d, LevelFilter::Warn);
-        assert_eq!(m, vec![("rbw_agent".to_string(), LevelFilter::Trace)]);
+        assert_eq!(m, vec![("bwx_agent".to_string(), LevelFilter::Trace)]);
     }
 
     #[test]
@@ -131,11 +131,11 @@ mod tests {
     fn level_for_module_prefix() {
         let logger = Logger {
             default: LevelFilter::Warn,
-            modules: vec![("rbw".to_string(), LevelFilter::Debug)],
+            modules: vec![("bwx".to_string(), LevelFilter::Debug)],
         };
-        assert_eq!(logger.level_for("rbw"), LevelFilter::Debug);
-        assert_eq!(logger.level_for("rbw::config"), LevelFilter::Debug);
+        assert_eq!(logger.level_for("bwx"), LevelFilter::Debug);
+        assert_eq!(logger.level_for("bwx::config"), LevelFilter::Debug);
         assert_eq!(logger.level_for("other"), LevelFilter::Warn);
-        assert_eq!(logger.level_for("rbwx"), LevelFilter::Warn);
+        assert_eq!(logger.level_for("bwxx"), LevelFilter::Warn);
     }
 }

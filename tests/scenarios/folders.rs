@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -10,10 +10,10 @@ fn add_into_folder_and_list_shows_it() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
-    // Add an entry directly into a new folder. rbw auto-creates the folder
+    // Add an entry directly into a new folder. bwx auto-creates the folder
     // server-side on first use.
     let out = harness.run_with_stdin(
         &["add", "work.login", "--folder", "Work"],

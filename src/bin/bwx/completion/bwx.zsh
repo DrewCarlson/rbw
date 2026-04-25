@@ -1,4 +1,4 @@
-_rbw_wrapper() {
+_bwx_wrapper() {
   local -a opts
   local cur prev folder res name user
 
@@ -35,27 +35,27 @@ _rbw_wrapper() {
     done
 
     if [[ "$prev" == "--folder" ]] || [[ "$cur" == "--folder="* ]]; then
-      # rbw get --folder $folder
+      # bwx get --folder $folder
       res=$(
-        rbw list --fields folder 2>/dev/null \
+        bwx list --fields folder 2>/dev/null \
           | awk -v folder="$folder" 'NF && $1 ~ folder {print $1}' 2>/dev/null
       )
     elif [[ "$prev" != --field ]]; then
       if [ -z "$name" ]; then
-        # rbw get ... $cur
+        # bwx get ... $cur
         res=$(
-          rbw list --fields name,folder 2>/dev/null \
+          bwx list --fields name,folder 2>/dev/null \
             | awk -F'\t' -v folder="$folder" '$1 && (!folder || $2 == folder) {print $1}' 2>/dev/null
         )
       elif [ -z "$user" ]; then
-        # rbw get ... name $cur
+        # bwx get ... name $cur
         res=$(
-          rbw list --fields name,folder,user 2>/dev/null \
+          bwx list --fields name,folder,user 2>/dev/null \
             | awk -F'\t' -v name="$name" -v folder="$folder" '$1 == name && (!folder || $2 == folder) {print $3}' 2>/dev/null
         )
       fi
     else
-      _rbw
+      _bwx
       return
     fi
 
@@ -73,8 +73,8 @@ _rbw_wrapper() {
       compadd -- "${opts[@]}"
     fi
   else
-    _rbw
+    _bwx
   fi
 }
 
-compdef _rbw_wrapper rbw
+compdef _bwx_wrapper bwx

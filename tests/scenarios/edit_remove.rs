@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -10,12 +10,12 @@ fn edit_then_remove() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     let out = harness
         .run_with_stdin(&["add", "login.example"], b"oldpass\n\nold notes\n");
-    assert!(out.status.success(), "rbw add failed");
+    assert!(out.status.success(), "bwx add failed");
 
     assert_eq!(
         harness.check(&["get", "login.example"]).trim_end(),
@@ -29,7 +29,7 @@ fn edit_then_remove() {
     );
     assert!(
         out.status.success(),
-        "rbw edit failed: stderr={}",
+        "bwx edit failed: stderr={}",
         String::from_utf8_lossy(&out.stderr),
     );
 
@@ -47,7 +47,7 @@ fn edit_then_remove() {
     let out = harness.run(&["remove", "login.example"]);
     assert!(
         out.status.success(),
-        "rbw remove failed: stderr={}",
+        "bwx remove failed: stderr={}",
         String::from_utf8_lossy(&out.stderr),
     );
 

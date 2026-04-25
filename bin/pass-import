@@ -25,15 +25,15 @@ for entry in $(pass git ls-files | grep '\.gpg$' | sed 's/\.gpg$//'); do
     fi
     if echo "$name" | grep -q '\.'; then
         if [ -z "$folder" ]; then
-            echo "$pw" | rbw add --uri "$name" "$name" "$user"
+            echo "$pw" | bwx add --uri "$name" "$name" "$user"
         else
-            echo "$pw" | rbw add --uri "$name" --folder "$folder" "$name" "$user"
+            echo "$pw" | bwx add --uri "$name" --folder "$folder" "$name" "$user"
         fi
     else
         if [ -z "$folder" ]; then
-            echo "$pw" | rbw add "$name" "$user"
+            echo "$pw" | bwx add "$name" "$user"
         else
-            echo "$pw" | rbw add --folder "$folder" "$name" "$user"
+            echo "$pw" | bwx add --folder "$folder" "$name" "$user"
         fi
     fi
 done

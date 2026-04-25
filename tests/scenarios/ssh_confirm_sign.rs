@@ -5,14 +5,14 @@ use ssh_agent_lib::proto::SignRequest;
 use ssh_agent_lib::ssh_key::PublicKey;
 
 use crate::common::{
-    authenticate, register_user, upload_ssh_cipher, RbwHarness,
+    authenticate, register_user, upload_ssh_cipher, BwxHarness,
     VaultwardenServer,
 };
 use crate::skip_if_no_vaultwarden;
 
 fn upload_and_sync(
     server: &VaultwardenServer,
-    harness: &RbwHarness,
+    harness: &BwxHarness,
     email: &str,
     password: &str,
     cipher_name: &str,
@@ -26,7 +26,7 @@ fn upload_and_sync(
             "-N",
             "",
             "-C",
-            "rbw-e2e-confirm",
+            "bwx-e2e-confirm",
             "-f",
             key_path.to_str().unwrap(),
         ])
@@ -76,7 +76,7 @@ fn confirm_accept_allows_sign() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
     harness.check(&["config", "set", "ssh_confirm_sign", "true"]);
 
@@ -88,7 +88,7 @@ fn confirm_accept_allows_sign() {
     let (_keydir, pub_line) =
         upload_and_sync(&server, &harness, email, password, "ok.key");
 
-    let sock = harness.runtime_dir.join("rbw/ssh-agent-socket");
+    let sock = harness.runtime_dir.join("bwx/ssh-agent-socket");
     let mut client = Client::new(agent_stream(&sock));
     let idents = client.request_identities().expect("ids");
     let expected = PublicKey::from_openssh(&pub_line).expect("parse pub");
@@ -119,7 +119,7 @@ fn confirm_decline_blocks_sign() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
     harness.check(&["config", "set", "ssh_confirm_sign", "true"]);
     harness.check(&["login"]);
@@ -133,7 +133,7 @@ fn confirm_decline_blocks_sign() {
     // script on disk.
     harness.reject_confirm_prompts();
 
-    let sock = harness.runtime_dir.join("rbw/ssh-agent-socket");
+    let sock = harness.runtime_dir.join("bwx/ssh-agent-socket");
     let mut client = Client::new(agent_stream(&sock));
     let idents = client.request_identities().expect("ids");
     let expected = PublicKey::from_openssh(&pub_line).expect("parse pub");

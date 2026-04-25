@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -10,17 +10,17 @@ fn add_list_get() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
-    // `rbw add <name>` reads the new password from stdin when stdin is not a
+    // `bwx add <name>` reads the new password from stdin when stdin is not a
     // tty. Format matches what `parse_editor` expects: first line password,
     // blank line, notes body.
     let out = harness
         .run_with_stdin(&["add", "example.com"], b"hunter2\n\nnote line 1\n");
     assert!(
         out.status.success(),
-        "rbw add failed: stderr={}",
+        "bwx add failed: stderr={}",
         String::from_utf8_lossy(&out.stderr),
     );
 

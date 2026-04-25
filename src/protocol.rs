@@ -44,7 +44,7 @@ impl Request {
 
     /// Like `new`, but tags the request with a per-CLI-process session
     /// token and a human-readable purpose string. The agent uses the
-    /// session to coalesce Touch ID prompts so that a single `rbw
+    /// session to coalesce Touch ID prompts so that a single `bwx
     /// <command>` invocation only pops one biometric dialog regardless
     /// of how many `Decrypt`/`Encrypt` IPCs it fires; the purpose is
     /// shown on the prompt itself.

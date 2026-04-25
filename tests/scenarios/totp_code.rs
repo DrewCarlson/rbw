@@ -1,17 +1,17 @@
 use crate::common::{
-    authenticate, register_user, upload_login_cipher, RbwHarness,
+    authenticate, register_user, upload_login_cipher, BwxHarness,
 };
 use crate::skip_if_no_vaultwarden;
 
 // RFC 6238 reference secret. Base32 of ASCII "12345678901234567890".
 const SECRET_B32: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
 
-/// rbw's `add` CLI can't set the totp field directly. We upload the cipher
+/// bwx's `add` CLI can't set the totp field directly. We upload the cipher
 /// via the vaultwarden API ourselves (simulating a web-vault client), then
-/// sync and ask rbw for a code.
+/// sync and ask bwx for a code.
 #[test]
 #[ignore = "requires vaultwarden binary; run with --ignored"]
-fn rbw_code_matches_handrolled_totp() {
+fn bwx_code_matches_handrolled_totp() {
     let server = skip_if_no_vaultwarden!();
 
     let email = "totp@example.test";
@@ -31,7 +31,7 @@ fn rbw_code_matches_handrolled_totp() {
     )
     .expect("upload cipher");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
     harness.check(&["sync"]);
 
@@ -43,28 +43,28 @@ fn rbw_code_matches_handrolled_totp() {
         "non-digit in TOTP code: {code:?}"
     );
 
-    // Compute the expected code directly. If rbw happened to run in the
+    // Compute the expected code directly. If bwx happened to run in the
     // previous 30-second window (code is on a step boundary), accept either
     // that window's code or this window's.
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    let secret = rbw::totp::decode_base32(SECRET_B32).expect("decode b32");
+    let secret = bwx::totp::decode_base32(SECRET_B32).expect("decode b32");
     let here =
-        rbw::totp::generate(&secret, now, 30, 6, &rbw::totp::Algorithm::Sha1)
+        bwx::totp::generate(&secret, now, 30, 6, &bwx::totp::Algorithm::Sha1)
             .expect("generate here");
-    let prev = rbw::totp::generate(
+    let prev = bwx::totp::generate(
         &secret,
         now.saturating_sub(30),
         30,
         6,
-        &rbw::totp::Algorithm::Sha1,
+        &bwx::totp::Algorithm::Sha1,
     )
     .expect("generate prev");
     assert!(
         code == here || code == prev,
-        "rbw code {code:?} matches neither current window ({here:?}) nor \
+        "bwx code {code:?} matches neither current window ({here:?}) nor \
          previous window ({prev:?})"
     );
 }

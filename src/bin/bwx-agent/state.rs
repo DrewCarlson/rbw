@@ -9,9 +9,9 @@ const TOUCHID_SESSION_TTL: std::time::Duration =
     std::time::Duration::from_secs(60);
 
 pub struct State {
-    pub priv_key: Option<rbw::locked::Keys>,
+    pub priv_key: Option<bwx::locked::Keys>,
     pub org_keys:
-        Option<std::collections::HashMap<String, rbw::locked::Keys>>,
+        Option<std::collections::HashMap<String, bwx::locked::Keys>>,
     pub timeout: crate::timeout::Timeout,
     pub timeout_duration: std::time::Duration,
     pub sync_timeout: crate::timeout::Timeout,
@@ -32,19 +32,19 @@ pub struct State {
     // can't properly initialize the pinentry process. we work around this by
     // just reusing the last environment we saw being sent to the main agent
     // (there should be at least one in most cases because you need to start
-    // the rbw agent in order to make it start serving on the ssh agent
+    // the bwx agent in order to make it start serving on the ssh agent
     // socket, and that initial request should come with an environment).
     //
     // we should not use this for any requests on the main agent, those
     // should all send their own environment over.
-    pub last_environment: rbw::protocol::Environment,
+    pub last_environment: bwx::protocol::Environment,
 
     #[cfg(feature = "clipboard")]
     pub clipboard: Option<arboard::Clipboard>,
 }
 
 impl State {
-    pub fn key(&self, org_id: Option<&str>) -> Option<&rbw::locked::Keys> {
+    pub fn key(&self, org_id: Option<&str>) -> Option<&bwx::locked::Keys> {
         org_id.map_or(self.priv_key.as_ref(), |id| {
             self.org_keys.as_ref().and_then(|h| h.get(id))
         })
@@ -67,7 +67,7 @@ impl State {
 
     /// Touch ID session cache helpers. A session with a still-fresh
     /// timestamp (within `TOUCHID_SESSION_TTL`) may skip the biometric
-    /// prompt on subsequent requests within the same `rbw <command>`
+    /// prompt on subsequent requests within the same `bwx <command>`
     /// invocation.
     pub fn touchid_session_is_fresh(&self, session_id: &str) -> bool {
         self.touchid_sessions
@@ -94,7 +94,7 @@ impl State {
         self.sync_timeout.set(self.sync_timeout_duration);
     }
 
-    // the way we structure the client/agent split in rbw makes the master
+    // the way we structure the client/agent split in bwx makes the master
     // password reprompt feature a bit complicated to implement - it would be
     // a lot easier to just have the client do the prompting, but that would
     // leave it open to someone reading the cipherstring from the local
@@ -117,7 +117,7 @@ impl State {
     // forces a reprompt.
     pub fn set_master_password_reprompt(
         &mut self,
-        entries: &[rbw::db::Entry],
+        entries: &[bwx::db::Entry],
     ) {
         self.master_password_reprompt.clear();
 
@@ -138,15 +138,15 @@ impl State {
             }
 
             match &entry.data {
-                rbw::db::EntryData::Login { password, totp, .. } => {
+                bwx::db::EntryData::Login { password, totp, .. } => {
                     insert(password.as_deref());
                     insert(totp.as_deref());
                 }
-                rbw::db::EntryData::Card { number, code, .. } => {
+                bwx::db::EntryData::Card { number, code, .. } => {
                     insert(number.as_deref());
                     insert(code.as_deref());
                 }
-                rbw::db::EntryData::Identity {
+                bwx::db::EntryData::Identity {
                     ssn,
                     passport_number,
                     ..
@@ -154,14 +154,14 @@ impl State {
                     insert(ssn.as_deref());
                     insert(passport_number.as_deref());
                 }
-                rbw::db::EntryData::SecureNote => {}
-                rbw::db::EntryData::SshKey { private_key, .. } => {
+                bwx::db::EntryData::SecureNote => {}
+                bwx::db::EntryData::SshKey { private_key, .. } => {
                     insert(private_key.as_deref());
                 }
             }
 
             for field in &entry.fields {
-                if field.ty == Some(rbw::api::FieldType::Hidden) {
+                if field.ty == Some(bwx::api::FieldType::Hidden) {
                     insert(field.value.as_deref());
                 }
             }
@@ -174,13 +174,13 @@ impl State {
         self.master_password_reprompt_initialized
     }
 
-    pub fn last_environment(&self) -> &rbw::protocol::Environment {
+    pub fn last_environment(&self) -> &bwx::protocol::Environment {
         &self.last_environment
     }
 
     pub fn set_last_environment(
         &mut self,
-        environment: rbw::protocol::Environment,
+        environment: bwx::protocol::Environment,
     ) {
         self.last_environment = environment;
     }

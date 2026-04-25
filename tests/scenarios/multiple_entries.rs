@@ -1,4 +1,4 @@
-use crate::common::{register_user, RbwHarness};
+use crate::common::{register_user, BwxHarness};
 use crate::skip_if_no_vaultwarden;
 
 #[test]
@@ -10,7 +10,7 @@ fn many_entries_listed_and_fetched() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register user");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     let names = ["alpha.site", "beta.site", "gamma.site"];
@@ -19,7 +19,7 @@ fn many_entries_listed_and_fetched() {
         let out = harness.run_with_stdin(&["add", name], pw.as_bytes());
         assert!(
             out.status.success(),
-            "rbw add {name} failed: stderr={}",
+            "bwx add {name} failed: stderr={}",
             String::from_utf8_lossy(&out.stderr),
         );
     }
@@ -37,7 +37,7 @@ fn many_entries_listed_and_fetched() {
         assert_eq!(got, format!("pw-{i}"), "wrong password for {name}");
     }
 
-    // `rbw search` should match a substring.
+    // `bwx search` should match a substring.
     let search = harness.check(&["search", "beta"]);
     assert!(
         search.lines().any(|l| l.trim() == "beta.site"),

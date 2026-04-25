@@ -252,10 +252,10 @@ enum Opt {
 
     #[command(
         name = "ssh-socket",
-        about = "Print the filesystem path of rbw-agent's ssh-agent socket",
-        long_about = "Print the filesystem path of rbw-agent's ssh-agent \
+        about = "Print the filesystem path of bwx-agent's ssh-agent socket",
+        long_about = "Print the filesystem path of bwx-agent's ssh-agent \
             socket, suitable for export to `SSH_AUTH_SOCK`. Honors \
-            `RBW_PROFILE` and `XDG_RUNTIME_DIR`."
+            `BWX_PROFILE` and `XDG_RUNTIME_DIR`."
     )]
     SshSocket,
 
@@ -270,12 +270,12 @@ enum Opt {
 
     #[command(
         name = "setup-macos",
-        about = "Install the rbw-agent LaunchAgent + set SSH_AUTH_SOCK \
+        about = "Install the bwx-agent LaunchAgent + set SSH_AUTH_SOCK \
             for GUI apps (macOS only)",
         long_about = "One-shot macOS environment setup. Writes a \
             LaunchAgent plist that exports `SSH_AUTH_SOCK` to the \
             current login session at every login, so Finder/Spotlight-\
-            launched GUI apps (IDEs, git clients) see rbw-agent's ssh \
+            launched GUI apps (IDEs, git clients) see bwx-agent's ssh \
             socket. Also runs `launchctl setenv` for the current \
             session so existing GUI apps can be Cmd-Q'd and relaunched \
             without a logout."
@@ -287,7 +287,7 @@ enum Opt {
 
     #[command(
         name = "teardown-macos",
-        about = "Uninstall what `rbw setup-macos` created (macOS only)"
+        about = "Uninstall what `bwx setup-macos` created (macOS only)"
     )]
     TeardownMacos,
 
@@ -310,16 +310,16 @@ impl Opt {
             | Self::Remove { find_args }
             | Self::History { find_args }
             | Self::SshPublicKey { find_args } => {
-                format!("rbw {} {}", self.subcommand_name(), find_args.needle)
+                format!("bwx {} {}", self.subcommand_name(), find_args.needle)
             }
-            Self::Search { term, .. } => format!("rbw search {term}"),
+            Self::Search { term, .. } => format!("bwx search {term}"),
             Self::Add { name, .. }
             | Self::Generate {
                 name: Some(name), ..
             } => {
-                format!("rbw {} {name}", self.subcommand_name())
+                format!("bwx {} {name}", self.subcommand_name())
             }
-            _ => format!("rbw {}", self.subcommand_name()),
+            _ => format!("bwx {}", self.subcommand_name()),
         }
     }
 
@@ -432,7 +432,7 @@ impl Config {
 fn main() {
     let opt = Opt::parse();
 
-    rbw::logger::init("info");
+    bwx::logger::init("info");
 
     let subcommand_name = opt.subcommand_name();
     actions::set_purpose(opt.purpose());
@@ -517,15 +517,15 @@ fn main() {
             diceware,
         } => {
             let ty = if no_symbols {
-                rbw::pwgen::Type::NoSymbols
+                bwx::pwgen::Type::NoSymbols
             } else if only_numbers {
-                rbw::pwgen::Type::Numbers
+                bwx::pwgen::Type::Numbers
             } else if nonconfusables {
-                rbw::pwgen::Type::NonConfusables
+                bwx::pwgen::Type::NonConfusables
             } else if diceware {
-                rbw::pwgen::Type::Diceware
+                bwx::pwgen::Type::Diceware
             } else {
-                rbw::pwgen::Type::AllChars
+                bwx::pwgen::Type::AllChars
             };
             commands::generate(
                 name.as_deref(),
@@ -585,34 +585,34 @@ fn main() {
                     clap_complete::generate(
                         clap_complete::Shell::Bash,
                         &mut Opt::command(),
-                        "rbw",
+                        "bwx",
                         &mut std::io::stdout(),
                     );
-                    println!("{}", include_str!("completion/rbw.bash"));
+                    println!("{}", include_str!("completion/bwx.bash"));
                 }
                 CompletionShell::Fish => {
                     clap_complete::generate(
                         clap_complete::Shell::Fish,
                         &mut Opt::command(),
-                        "rbw",
+                        "bwx",
                         &mut std::io::stdout(),
                     );
-                    println!("{}", include_str!("completion/rbw.fish"));
+                    println!("{}", include_str!("completion/bwx.fish"));
                 }
                 CompletionShell::Zsh => {
                     clap_complete::generate(
                         clap_complete::Shell::Zsh,
                         &mut Opt::command(),
-                        "rbw",
+                        "bwx",
                         &mut std::io::stdout(),
                     );
-                    println!("{}", include_str!("completion/rbw.zsh"));
+                    println!("{}", include_str!("completion/bwx.zsh"));
                 }
                 CompletionShell::Powershell => {
                     clap_complete::generate(
                         clap_complete::Shell::PowerShell,
                         &mut Opt::command(),
-                        "rbw",
+                        "bwx",
                         &mut std::io::stdout(),
                     );
                 }
@@ -620,7 +620,7 @@ fn main() {
                     clap_complete::generate(
                         clap_complete::Shell::Elvish,
                         &mut Opt::command(),
-                        "rbw",
+                        "bwx",
                         &mut std::io::stdout(),
                     );
                 }
@@ -628,7 +628,7 @@ fn main() {
             Ok(())
         }
     }
-    .with_context(|| format!("rbw {subcommand_name}"));
+    .with_context(|| format!("bwx {subcommand_name}"));
 
     if let Err(e) = res {
         eprintln!("{e:#}");

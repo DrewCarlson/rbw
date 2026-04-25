@@ -1,5 +1,5 @@
 use crate::common::{
-    authenticate, register_user, upload_ssh_cipher, RbwHarness,
+    authenticate, register_user, upload_ssh_cipher, BwxHarness,
 };
 use crate::skip_if_no_vaultwarden;
 
@@ -18,7 +18,7 @@ fn ssh_public_key_roundtrips() {
             "-N",
             "",
             "-C",
-            "rbw-e2e-pubkey",
+            "bwx-e2e-pubkey",
             "-f",
             key_path.to_str().unwrap(),
         ])
@@ -48,7 +48,7 @@ fn ssh_public_key_roundtrips() {
     )
     .expect("upload");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
     harness.check(&["sync"]);
 
@@ -81,7 +81,7 @@ fn ssh_public_key_rejects_non_ssh_entry() {
     let password = "correct horse battery staple";
     register_user(&server, email, password).expect("register");
 
-    let harness = RbwHarness::new(&server, email, password);
+    let harness = BwxHarness::new(&server, email, password);
     harness.login_and_unlock();
 
     // A regular Login entry is not an SSH key.
