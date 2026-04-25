@@ -191,7 +191,9 @@ impl ssh_agent_lib::agent::Session for SshSession {
 
         let gate = bwx::config::Config::load()
             .map_or(bwx::touchid::Gate::Off, |c| c.touchid_gate);
-        if bwx::touchid::gate_applies(gate, bwx::touchid::Kind::SshSign) {
+        let touchid_gated_this_sign =
+            bwx::touchid::gate_applies(gate, bwx::touchid::Kind::SshSign);
+        if touchid_gated_this_sign {
             let ok = bwx::touchid::require_presence(&format!(
                 "{peer} wants to sign with SSH key {name:?}",
                 peer = self.peer,
@@ -206,15 +208,19 @@ impl ssh_agent_lib::agent::Session for SshSession {
             }
         }
 
-        // Optional confirm-on-sign. Reads both the config flag and the
-        // last-known pinentry environment from the shared state.
+        // Optional confirm-on-sign via pinentry. Skipped entirely
+        // when the Touch ID gate already prompted for *this* sign —
+        // the biometric tap *is* the user's confirmation, so
+        // re-prompting via pinentry would be redundant (and would
+        // require pinentry to be installed and reachable, which
+        // isn't a given on macOS).
         let (confirm_required, pinentry, environment) = {
             let state = self.state.lock().await;
             let config = bwx::config::Config::load().map_err(|e| {
                 ssh_agent_lib::error::AgentError::Other(e.into())
             })?;
             (
-                config.ssh_confirm_sign,
+                config.ssh_confirm_sign && !touchid_gated_this_sign,
                 config.pinentry,
                 state.last_environment().clone(),
             )
