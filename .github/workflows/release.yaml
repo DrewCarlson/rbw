@@ -307,9 +307,54 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${GITHUB_REF_NAME}"           # e.g. v2.0.0-rc01
+          ver="${tag#v}"                     # 2.0.0-rc01
+          base_ver="${ver%%-*}"              # 2.0.0  — prerelease suffix stripped
+
+          # Extract the CHANGELOG section for this release. Prefer a
+          # section that matches the *exact* tag version (so a
+          # prerelease can have its own per-rc notes if you wrote
+          # them), then fall back to the base version's section.
+          # Stops at the next `## [` heading.
+          extract_section() {
+            awk -v ver="$1" '
+              $0 ~ "^## \\[" ver "\\]" { found=1; print; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md
+          }
+          notes_file="$RUNNER_TEMP/release-notes.md"
+          extract_section "$ver" > "$notes_file"
+          if [ ! -s "$notes_file" ] && [ "$ver" != "$base_ver" ]; then
+            extract_section "$base_ver" > "$notes_file"
+          fi
+
+          if [ ! -s "$notes_file" ]; then
+            # No matching section — ship a one-liner rather than the
+            # whole file so the release page isn't visually noisy.
+            printf '## %s\n\nSee [CHANGELOG.md](https://github.com/%s/blob/main/CHANGELOG.md) for details.\n' \
+              "$tag" "$GITHUB_REPOSITORY" > "$notes_file"
+          fi
+
+          # Mark anything that isn't a clean `vMAJOR.MINOR.PATCH` as a
+          # GitHub prerelease (won't appear under "Latest release",
+          # won't be picked up by GitHub's release-download endpoints
+          # that filter to stable).
+          prerelease_flag=()
+          if [ "$ver" != "$base_ver" ]; then
+            prerelease_flag=(--prerelease)
+          fi
+
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --title "$tag" --notes-file CHANGELOG.md --draft
+            gh release create "$tag" \
+              --title "$tag" \
+              --notes-file "$notes_file" \
+              --draft \
+              "${prerelease_flag[@]}"
+          else
+            # On re-runs, refresh the body in case CHANGELOG.md was
+            # edited between the first attempt and this one.
+            gh release edit "$tag" --notes-file "$notes_file" "${prerelease_flag[@]}"
           fi
           gh release upload "$tag" dist/* --clobber
 
