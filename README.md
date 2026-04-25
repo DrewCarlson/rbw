@@ -212,10 +212,10 @@ to migrate the Keychain item.
 
 Installs two LaunchAgents under `~/Library/LaunchAgents/`:
 
-- **`net.tozt.bwx.ssh-auth-sock`** — runs `~/bin/bwx-set-ssh-sock` at
+- **`drews.website.bwx.ssh-auth-sock`** — runs `~/bin/bwx-set-ssh-sock` at
   login, which calls `launchctl setenv SSH_AUTH_SOCK $(bwx ssh-socket)`.
   Puts the socket into launchd's environment so GUI apps inherit it.
-- **`net.tozt.bwx.agent`** — runs `bwx-agent --no-daemonize` under
+- **`drews.website.bwx.agent`** — runs `bwx-agent --no-daemonize` under
   launchd supervision with `KeepAlive`. Log output lands in
   `~/Library/Application Support/bwx/launchd-agent.{out,err}`.
 

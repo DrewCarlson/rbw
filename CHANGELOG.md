@@ -5,7 +5,7 @@
 **Project renamed from `rbw` to `bwx-cli`.** The binaries are now `bwx`
 and `bwx-agent`; XDG dirs move from `~/.config/rbw` etc. to
 `~/.config/bwx`; the macOS Keychain service is `"bwx"`; LaunchAgent
-labels are `net.tozt.bwx.*`; env vars use a `BWX_` prefix
+labels are `drews.website.bwx.*`; env vars use a `BWX_` prefix
 (`BWX_PROFILE`, `BWX_TTY`, …). Existing installs need to migrate
 config/cache dirs and re-enroll Touch ID.
 

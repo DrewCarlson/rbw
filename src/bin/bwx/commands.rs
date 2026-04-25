@@ -2107,9 +2107,9 @@ pub fn touchid_disable() -> bin_error::Result<()> {
 // ---------------------------------------------------------------------------
 
 #[cfg(target_os = "macos")]
-const LAUNCHAGENT_LABEL: &str = "net.tozt.bwx.ssh-auth-sock";
+const LAUNCHAGENT_LABEL: &str = "drews.website.bwx.ssh-auth-sock";
 #[cfg(target_os = "macos")]
-const AGENT_LAUNCHAGENT_LABEL: &str = "net.tozt.bwx.agent";
+const AGENT_LAUNCHAGENT_LABEL: &str = "drews.website.bwx.agent";
 
 #[cfg(not(target_os = "macos"))]
 pub fn setup_macos(_force: bool) -> bin_error::Result<()> {
