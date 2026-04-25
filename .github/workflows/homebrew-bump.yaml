@@ -127,23 +127,26 @@ jobs:
           # the same head branch already exists; in that case just
           # leave the existing PR pointing at the (force-pushed)
           # branch — its diff updates automatically.
+          source_url="https://github.com/${{ github.repository }}/releases/tag/${{ steps.ver.outputs.tag }}"
+          body=$(printf '%s\n' \
+            "Bump \`${FORMULA_NAME}\` to **${ver}**." \
+            "" \
+            "Source release: <${source_url}>" \
+            "" \
+            "Verify before merging (or wait for auto-merge to land it):" \
+            '```sh' \
+            "brew tap DrewCarlson/tap" \
+            "brew install --build-from-source ./Formula/${FORMULA_NAME}.rb" \
+            "brew test ${FORMULA_NAME}" \
+            "brew audit --strict --online ${FORMULA_NAME}" \
+            '```')
           if ! gh pr view "$branch" --repo "$TAP_REPO" >/dev/null 2>&1; then
             gh pr create \
               --repo "$TAP_REPO" \
               --base main \
               --head "$branch" \
               --title "${FORMULA_NAME} ${ver}" \
-              --body "Bump \`${FORMULA_NAME}\` to **${ver}**.
-
-Source release: <https://github.com/${{ github.repository }}/releases/tag/${{ steps.ver.outputs.tag }}>
-
-Verify before merging (or wait for auto-merge to land it):
-\`\`\`sh
-brew tap DrewCarlson/tap
-brew install --build-from-source ./Formula/${FORMULA_NAME}.rb
-brew test ${FORMULA_NAME}
-brew audit --strict --online ${FORMULA_NAME}
-\`\`\`"
+              --body "$body"
           else
             echo "::notice::PR for $branch already exists — diff was force-pushed"
           fi
