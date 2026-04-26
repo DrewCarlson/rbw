@@ -26,6 +26,7 @@ pub async fn login(
     Option<u32>,
     Option<u32>,
     String,
+    crate::identity::Identity,
 )> {
     let (client, config) = api_client_async().await?;
     let (kdf, iterations, memory, parallelism) =
@@ -58,6 +59,7 @@ pub async fn login(
         memory,
         parallelism,
         protected_key,
+        identity,
     ))
 }
 
@@ -97,7 +99,26 @@ pub fn unlock<S: std::hash::BuildHasher>(
         memory,
         parallelism,
     )?;
+    unlock_with_identity(
+        &identity,
+        protected_key,
+        protected_private_key,
+        protected_org_keys,
+    )
+}
 
+/// Like `unlock`, but reuses an `Identity` already derived elsewhere
+/// (e.g. by `login`). Lets callers skip a second KDF run when they're
+/// going to unlock the vault immediately after authenticating.
+pub fn unlock_with_identity<S: std::hash::BuildHasher>(
+    identity: &crate::identity::Identity,
+    protected_key: &str,
+    protected_private_key: &str,
+    protected_org_keys: &std::collections::HashMap<String, String, S>,
+) -> Result<(
+    crate::locked::Keys,
+    std::collections::HashMap<String, crate::locked::Keys>,
+)> {
     let protected_key =
         crate::cipherstring::CipherString::new(protected_key)?;
     let key = match protected_key.decrypt_locked_symmetric(&identity.keys) {

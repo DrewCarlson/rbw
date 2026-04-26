@@ -192,6 +192,7 @@ pub async fn login(
                     memory,
                     parallelism,
                     protected_key,
+                    identity,
                 )) => {
                     login_success(
                         state.clone(),
@@ -202,9 +203,8 @@ pub async fn login(
                         memory,
                         parallelism,
                         protected_key,
-                        password,
+                        identity,
                         db,
-                        email,
                     )
                     .await?;
                     break 'attempts;
@@ -242,6 +242,7 @@ pub async fn login(
                                 memory,
                                 parallelism,
                                 protected_key,
+                                identity,
                             ) = two_factor(
                                 environment,
                                 &email,
@@ -258,9 +259,8 @@ pub async fn login(
                                 memory,
                                 parallelism,
                                 protected_key,
-                                password,
+                                identity,
                                 db,
-                                email,
                             )
                             .await?;
                             break 'attempts;
@@ -305,6 +305,7 @@ async fn two_factor(
     Option<u32>,
     Option<u32>,
     String,
+    bwx::identity::Identity,
 )> {
     let mut err_msg = None;
     for i in 1_u8..=3 {
@@ -342,6 +343,7 @@ async fn two_factor(
                 memory,
                 parallelism,
                 protected_key,
+                identity,
             )) => {
                 return Ok((
                     access_token,
@@ -351,6 +353,7 @@ async fn two_factor(
                     memory,
                     parallelism,
                     protected_key,
+                    identity,
                 ))
             }
             Err(bwx::error::Error::IncorrectPassword { message }) => {
@@ -393,9 +396,8 @@ async fn login_success(
     memory: Option<u32>,
     parallelism: Option<u32>,
     protected_key: String,
-    password: bwx::locked::Password,
+    identity: bwx::identity::Identity,
     mut db: bwx::db::Db,
-    email: String,
 ) -> bin_error::Result<()> {
     db.access_token = Some(access_token.clone());
     db.refresh_token = Some(refresh_token.clone());
@@ -415,13 +417,8 @@ async fn login_success(
         ));
     };
 
-    let res = bwx::actions::unlock(
-        &email,
-        &password,
-        kdf,
-        iterations,
-        memory,
-        parallelism,
+    let res = bwx::actions::unlock_with_identity(
+        &identity,
         &protected_key,
         &protected_private_key,
         &db.protected_org_keys,

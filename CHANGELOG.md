@@ -8,6 +8,9 @@
 * Reuse the search-cipher plaintext when finalising the matched entry
   in `find_entry`, so `get`/`code`/`exec` skip the redundant
   decrypt-via-IPC of name, folder, notes, and login username.
+* Skip the second KDF run during `bwx login`. The agent now reuses the
+  `Identity` produced while authenticating to unlock the vault,
+  shaving 100-500ms off Argon2id-backed accounts on first login.
 
 ## [2.1.0] - 2026-04-26
 
