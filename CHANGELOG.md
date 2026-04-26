@@ -41,6 +41,9 @@
   large payloads (`bwx list`, `DecryptBatch`). **Run `bwx stop-agent`
   after upgrading** so the new CLI doesn't try to talk to a still-
   running pre-2.1.1 agent.
+* Agent now caps each request read at 30 seconds and exits the
+  connection cleanly on timeout, so a peer that sends a length prefix
+  and then stalls can't pin a tokio task forever.
 
 ## [2.1.0] - 2026-04-26
 

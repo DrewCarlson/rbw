@@ -166,6 +166,76 @@ mod tests {
     }
 
     #[test]
+    fn framed_recv_rejects_truncated_payload() {
+        let (a, mut b) = std::os::unix::net::UnixStream::pair().unwrap();
+        let mut sock = Sock(a);
+
+        // Length prefix says 64 bytes, peer sends 4 bytes then closes.
+        std::io::Write::write_all(&mut b, &64u32.to_be_bytes()).unwrap();
+        std::io::Write::write_all(&mut b, &[0xc0, 0xc1, 0xc2, 0xc3]).unwrap();
+        drop(b);
+
+        let err = sock.recv().unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("read message"),
+            "expected read error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn framed_recv_rejects_malformed_msgpack() {
+        let (a, mut b) = std::os::unix::net::UnixStream::pair().unwrap();
+        let mut sock = Sock(a);
+
+        // Valid 4-byte frame of garbage that isn't a valid Response.
+        let payload = b"\xc1\xc1\xc1\xc1";
+        let len = u32::try_from(payload.len()).unwrap();
+        std::io::Write::write_all(&mut b, &len.to_be_bytes()).unwrap();
+        std::io::Write::write_all(&mut b, payload).unwrap();
+
+        let err = sock.recv().unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("parse"), "expected parse error, got: {msg}");
+    }
+
+    #[test]
+    fn framed_recv_rejects_zero_length_frame() {
+        let (a, mut b) = std::os::unix::net::UnixStream::pair().unwrap();
+        let mut sock = Sock(a);
+
+        std::io::Write::write_all(&mut b, &0u32.to_be_bytes()).unwrap();
+        // No payload follows; rmp-serde over an empty slice must fail.
+        let err = sock.recv().unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("parse"), "expected parse error, got: {msg}");
+    }
+
+    #[test]
+    fn framed_send_recv_roundtrip_via_sock_pair() {
+        // Full client/server framing on both sides: encode a Response on
+        // one Sock and decode it via the other Sock's recv path.
+        let (a, b) = std::os::unix::net::UnixStream::pair().unwrap();
+
+        // Hand-encode the response on `b` using the same wire layout as
+        // Sock::send so the test pins the framing contract.
+        let resp = bwx::protocol::Response::Version { version: 42 };
+        let payload = rmp_serde::to_vec(&resp).unwrap();
+        let len = u32::try_from(payload.len()).unwrap();
+        let mut b = b;
+        std::io::Write::write_all(&mut b, &len.to_be_bytes()).unwrap();
+        std::io::Write::write_all(&mut b, &payload).unwrap();
+
+        let mut sock = Sock(a);
+        match sock.recv().unwrap() {
+            bwx::protocol::Response::Version { version } => {
+                assert_eq!(version, 42);
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
     fn invalidate_cached_clears_slot() {
         // Plant a value in the cache then confirm invalidate_cached drops
         // it. We can't easily fabricate a Sock without a live agent, so
