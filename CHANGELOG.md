@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.1.1] - Unreleased
+## [2.2.0] - 2026-04-26
 
 * Cache `Config::load()` once per `bwx` invocation; trims a few ms of
   redundant disk + JSON parse from every command that touches the
