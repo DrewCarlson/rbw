@@ -158,58 +158,64 @@ pub(super) fn find_entry_raw(
     folder: Option<&str>,
     ignore_case: bool,
 ) -> bin_error::Result<(bwx::db::Entry, DecryptedSearchCipher)> {
-    let mut matches: Vec<(bwx::db::Entry, DecryptedSearchCipher)> = vec![];
+    let find_indices =
+        |strict_username, strict_folder, exact| -> Vec<usize> {
+            entries
+                .iter()
+                .enumerate()
+                .filter_map(|(i, (_, decrypted_cipher))| {
+                    decrypted_cipher
+                        .matches(
+                            needle,
+                            username,
+                            folder,
+                            ignore_case,
+                            strict_username,
+                            strict_folder,
+                            exact,
+                        )
+                        .then_some(i)
+                })
+                .collect()
+        };
 
-    let find_matches = |strict_username, strict_folder, exact| {
-        entries
-            .iter()
-            .filter(|&(_, decrypted_cipher)| {
-                decrypted_cipher.matches(
-                    needle,
-                    username,
-                    folder,
-                    ignore_case,
-                    strict_username,
-                    strict_folder,
-                    exact,
-                )
-            })
-            .cloned()
-            .collect()
-    };
+    // Holds the broadest match set from the most recent pass, used only to
+    // build the "multiple entries found" error if every pass fails to
+    // narrow to one candidate.
+    let mut last_matches: Vec<usize> = Vec::new();
 
     for exact in [true, false] {
-        matches = find_matches(true, true, exact);
-        if matches.len() == 1 {
-            return Ok(matches[0].clone());
+        let strict = find_indices(true, true, exact);
+        if strict.len() == 1 {
+            return Ok(entries[strict[0]].clone());
         }
 
-        let strict_folder_matches = find_matches(false, true, exact);
-        let strict_username_matches = find_matches(true, false, exact);
+        let strict_folder_matches = find_indices(false, true, exact);
+        let strict_username_matches = find_indices(true, false, exact);
         if strict_folder_matches.len() == 1
             && strict_username_matches.len() != 1
         {
-            return Ok(strict_folder_matches[0].clone());
+            return Ok(entries[strict_folder_matches[0]].clone());
         } else if strict_folder_matches.len() != 1
             && strict_username_matches.len() == 1
         {
-            return Ok(strict_username_matches[0].clone());
+            return Ok(entries[strict_username_matches[0]].clone());
         }
 
-        matches = find_matches(false, false, exact);
-        if matches.len() == 1 {
-            return Ok(matches[0].clone());
+        last_matches = find_indices(false, false, exact);
+        if last_matches.len() == 1 {
+            return Ok(entries[last_matches[0]].clone());
         }
     }
 
-    if matches.is_empty() {
+    if last_matches.is_empty() {
         Err(crate::bin_error::err!("no entry found"))
     } else {
-        let entries: Vec<String> = matches
+        let names: Vec<String> = last_matches
             .iter()
-            .map(|(_, decrypted)| decrypted.display_name())
+            .map(|&i| entries[i].1.display_name())
             .collect();
-        let entries = entries.join(", ");
-        Err(crate::bin_error::err!("multiple entries found: {entries}"))
+        let names = names.join(", ");
+        Err(crate::bin_error::err!("multiple entries found: {names}"))
     }
 }
