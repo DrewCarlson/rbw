@@ -70,6 +70,14 @@ impl Agent {
                         res.context("failed to accept incoming connection")?;
                     if let Err(e) = crate::sock::check_peer_uid(&stream) {
                         log::warn!("rejecting connection: {e:#}");
+                        spawn_reject(stream, format!("{e:#}"));
+                        continue;
+                    }
+                    if let Err(e) = crate::peer_check::check_peer_team(
+                        crate::sock::peer_pid_of(&stream),
+                    ) {
+                        log::warn!("rejecting connection: {e:#}");
+                        spawn_reject(stream, format!("{e:#}"));
                         continue;
                     }
                     let mut sock = crate::sock::Sock::new(stream);
@@ -113,6 +121,16 @@ impl Agent {
 /// sending a single request. A peer that sends a length prefix and
 /// then stalls otherwise pins this tokio task indefinitely.
 const RECV_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Send a single `Response::Error` over a connection we're refusing,
+/// then close it. Lets the peer fail fast with a real error string
+/// instead of blocking on an EOF detection on the recv side.
+fn spawn_reject(stream: tokio::net::UnixStream, error: String) {
+    tokio::spawn(async move {
+        let mut sock = crate::sock::Sock::new(stream);
+        let _ = sock.send(&bwx::protocol::Response::Error { error }).await;
+    });
+}
 
 async fn handle_request(
     sock: &mut crate::sock::Sock,

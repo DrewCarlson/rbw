@@ -2,6 +2,19 @@
 
 ## [2.2.1] - Unreleased
 
+* **Same-team peer verification on the agent socket (macOS).** When
+  the agent itself is signed with a Team Identifier (Developer ID or
+  Apple Development), it now requires connecting clients to be signed
+  by the same team via a `SecCodeCheckValidity` requirement string.
+  Closes the "another process running as my uid that's signed by some
+  other identity". Ad-hoc and unsigned agent builds (local
+  `cargo install`, forks without a paid Apple cert) keep the prior
+  same-uid-only behavior, so dev workflows aren't disrupted.
+* Rejected agent connections now send a `Response::Error` before
+  closing instead of dropping silently, so the CLI fails fast with a
+  real error message. `bwx stop-agent` (and any other path that ends
+  up sending `Quit`) now bounds its `wait_for_exit` poll at 2 seconds
+  rather than waiting forever.
 * **Fix macOS releases getting killed at exec time.** 2.2.0 binaries
   were signed with a `keychain-access-groups` entitlement that AMFI
   treats as restricted; without a provisioning profile (which a bare

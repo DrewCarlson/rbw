@@ -81,6 +81,13 @@ impl Sock {
     }
 }
 
+/// Best-effort lookup of the peer's pid from a connected `UnixStream`.
+/// Wraps `peer_pid` for callers that work with the typed stream.
+pub fn peer_pid_of(stream: &tokio::net::UnixStream) -> Option<i32> {
+    use std::os::unix::io::AsRawFd as _;
+    peer_pid(stream.as_raw_fd())
+}
+
 /// Verify that the peer connected to `stream` is running as the same
 /// uid as this process. The 0o700 runtime dir already blocks cross-user
 /// access at the filesystem layer; this catches the case where someone

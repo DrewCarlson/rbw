@@ -6,6 +6,7 @@ mod bin_error;
 mod daemon;
 mod debugger;
 mod notifications;
+mod peer_check;
 mod sock;
 mod ssh_agent;
 mod state;

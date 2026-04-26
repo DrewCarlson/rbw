@@ -243,9 +243,16 @@ fn simple_action(action: bwx::protocol::Action) -> bin_error::Result<()> {
 }
 
 fn wait_for_exit(pid: rustix::process::Pid) {
-    loop {
+    // Bounded so an agent that ignores Quit (e.g. because it rejected
+    // the connection on a code-requirement check) doesn't pin us
+    // indefinitely. The CLI caller already has the error from the
+    // rejected probe; we just want to give a cooperating agent enough
+    // time to actually shut down before returning.
+    let deadline =
+        std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while std::time::Instant::now() < deadline {
         if rustix::process::test_kill_process(pid).is_err() {
-            break;
+            return;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
