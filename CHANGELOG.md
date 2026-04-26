@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.2.2] - Unreleased
+
+* **Touch ID wrapper key now lives in the data-protection keychain.**
+  All `SecItem*` calls in `src/touchid/keychain.rs` pass
+  `kSecUseDataProtectionKeychain = true`. Items are scoped by the
+  binary's team-identifier rather than via per-binary login-keychain
+  ACLs, so reinstalling or upgrading a Developer-ID-signed bwx no
+  longer triggers the "bwx wants to access the keychain" prompt and
+  there is no "Always Allow" ACL to manage.
+
 ## [2.2.1] - 2026-04-26
 
 * **Same-team peer verification on the agent socket (macOS).** When

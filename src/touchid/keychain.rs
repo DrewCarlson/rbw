@@ -1,7 +1,11 @@
 //! Keychain storage for bwx's Touch ID wrapper key.
 //!
-//! Items are written under the agent's implicit (signing-team-scoped)
-//! access group with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
+//! All `SecItem*` calls pass `kSecUseDataProtectionKeychain = true`,
+//! so items live in the modern data-protection keychain rather than
+//! the legacy file-based login keychain. Scoping is by the binary's
+//! team-identifier (or per-binary identifier when ad-hoc signed); no
+//! per-item ACL prompts. `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
+//! keeps the bytes off iCloud Keychain and bound to this device.
 //! Touch ID enforcement happens in the agent via `require_presence`
 //! before this module is asked to load the bytes.
 #![allow(
@@ -28,15 +32,16 @@ use security_framework_sys::keychain_item::{
     SecItemAdd, SecItemCopyMatching, SecItemDelete,
 };
 
-// `kSecUseOperationPrompt` and `kSecAttrAccessible` (the dictionary KEY;
+// `kSecUseOperationPrompt`, `kSecAttrAccessible` (the dictionary KEY;
 // distinct from the `kSecAttrAccessible*` VALUE constants that are
-// exported) aren't re-exported by security-framework-sys. They're
-// singleton CFStringRefs from Security.framework resolved by the system
-// linker.
+// exported), and `kSecUseDataProtectionKeychain` aren't re-exported by
+// security-framework-sys. They're singleton CFStringRefs from
+// Security.framework resolved by the system linker.
 #[link(name = "Security", kind = "framework")]
 unsafe extern "C" {
     static kSecUseOperationPrompt: CFStringRef;
     static kSecAttrAccessible: CFStringRef;
+    static kSecUseDataProtectionKeychain: CFStringRef;
 }
 
 /// Keychain generic-password `service` value shared by all bwx Touch ID
@@ -87,6 +92,8 @@ pub fn store(label: &str, secret: &[u8]) -> Result<(), Error> {
         let attr_account = CFString::wrap_under_get_rule(kSecAttrAccount);
         let value_data = CFString::wrap_under_get_rule(kSecValueData);
         let class_key = CFString::wrap_under_get_rule(kSecClass);
+        let use_dp =
+            CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain);
 
         let dict = CFDictionary::from_CFType_pairs(&[
             (class_key.as_CFType(), class.as_CFType()),
@@ -94,6 +101,7 @@ pub fn store(label: &str, secret: &[u8]) -> Result<(), Error> {
             (attr_account.as_CFType(), account.as_CFType()),
             (value_data.as_CFType(), data.as_CFType()),
             (attr_accessible.as_CFType(), accessible_v.as_CFType()),
+            (use_dp.as_CFType(), CFBoolean::true_value().as_CFType()),
         ]);
 
         let status =
@@ -121,6 +129,8 @@ pub fn load(label: &str, prompt: &str) -> Result<crate::locked::Vec, Error> {
         let match_limit_one = CFNumber::from(1i64);
         let use_operation_prompt =
             CFString::wrap_under_get_rule(kSecUseOperationPrompt);
+        let use_dp =
+            CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain);
 
         let dict = CFDictionary::from_CFType_pairs(&[
             (class_key.as_CFType(), class.as_CFType()),
@@ -129,6 +139,7 @@ pub fn load(label: &str, prompt: &str) -> Result<crate::locked::Vec, Error> {
             (return_data.as_CFType(), CFBoolean::true_value().as_CFType()),
             (match_limit.as_CFType(), match_limit_one.as_CFType()),
             (use_operation_prompt.as_CFType(), prompt_cf.as_CFType()),
+            (use_dp.as_CFType(), CFBoolean::true_value().as_CFType()),
         ]);
 
         let mut result: CFTypeRef = std::ptr::null();
@@ -165,11 +176,14 @@ pub fn delete(label: &str) -> Result<(), Error> {
         let class_key = CFString::wrap_under_get_rule(kSecClass);
         let attr_service = CFString::wrap_under_get_rule(kSecAttrService);
         let attr_account = CFString::wrap_under_get_rule(kSecAttrAccount);
+        let use_dp =
+            CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain);
 
         let dict = CFDictionary::from_CFType_pairs(&[
             (class_key.as_CFType(), class.as_CFType()),
             (attr_service.as_CFType(), service.as_CFType()),
             (attr_account.as_CFType(), account.as_CFType()),
+            (use_dp.as_CFType(), CFBoolean::true_value().as_CFType()),
         ]);
 
         let status = SecItemDelete(dict.as_concrete_TypeRef());
@@ -192,6 +206,8 @@ pub fn exists(label: &str) -> Result<bool, Error> {
         let attr_account = CFString::wrap_under_get_rule(kSecAttrAccount);
         let match_limit = CFString::wrap_under_get_rule(kSecMatchLimit);
         let match_limit_one = CFNumber::from(1i64);
+        let use_dp =
+            CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain);
 
         // Don't request return_data — that would force a biometric
         // prompt. Just ask whether the record exists by matching on
@@ -201,6 +217,7 @@ pub fn exists(label: &str) -> Result<bool, Error> {
             (attr_service.as_CFType(), service.as_CFType()),
             (attr_account.as_CFType(), account.as_CFType()),
             (match_limit.as_CFType(), match_limit_one.as_CFType()),
+            (use_dp.as_CFType(), CFBoolean::true_value().as_CFType()),
         ]);
 
         let mut result: CFTypeRef = std::ptr::null();
