@@ -53,9 +53,9 @@ pub(super) fn decrypt_list_ciphers(
     let mut slots: Vec<Slots> = Vec::with_capacity(entries.len());
 
     let push = |items: &mut Vec<bwx::protocol::DecryptItem>,
-                    cipherstring: &str,
-                    entry_key: Option<&str>,
-                    org_id: Option<&str>|
+                cipherstring: &str,
+                entry_key: Option<&str>,
+                org_id: Option<&str>|
      -> usize {
         items.push(bwx::protocol::DecryptItem {
             cipherstring: cipherstring.to_string(),

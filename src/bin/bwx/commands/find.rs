@@ -105,7 +105,8 @@ fn compile_regex_cached(url: &str) -> Option<std::sync::Arc<regex::Regex>> {
     static CACHE: OnceLock<
         Mutex<std::collections::HashMap<String, Option<Arc<regex::Regex>>>>,
     > = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    let cache =
+        CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
     let mut guard = cache.lock().ok()?;
     if let Some(entry) = guard.get(url) {
         return entry.clone();

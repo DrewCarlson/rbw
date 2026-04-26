@@ -72,9 +72,8 @@ pub async fn decrypt_batch(
         .await
         {
             Ok(plaintext) => {
-                results.push(bwx::protocol::DecryptItemResult::Ok {
-                    plaintext,
-                });
+                results
+                    .push(bwx::protocol::DecryptItemResult::Ok { plaintext });
             }
             Err(e) => {
                 results.push(bwx::protocol::DecryptItemResult::Err {
@@ -195,9 +194,8 @@ mod tests {
 
     #[test]
     fn sanitize_drops_source_chain_for_with_context() {
-        let inner = std::io::Error::other(
-            "<sensitive: mac mismatch on 0xabcdef...>",
-        );
+        let inner =
+            std::io::Error::other("<sensitive: mac mismatch on 0xabcdef...>");
         let wrapped =
             bin_error::Error::with_context(inner, "failed to decrypt entry");
         let out = sanitize_batch_item_error(&wrapped);
@@ -213,9 +211,8 @@ mod tests {
 
     #[test]
     fn sanitize_boxed_returns_generic() {
-        let io_err = std::io::Error::other(
-            "/tmp/secret-token-AKIAIOSFODNN7EXAMPLE",
-        );
+        let io_err =
+            std::io::Error::other("/tmp/secret-token-AKIAIOSFODNN7EXAMPLE");
         let boxed = bin_error::Error::Boxed(Box::new(io_err));
         let out = sanitize_batch_item_error(&boxed);
         assert_eq!(out, "decrypt failed");

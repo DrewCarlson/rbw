@@ -96,7 +96,9 @@ pub fn cached_is_some() -> bool {
 pub fn request(
     msg: &bwx::protocol::Request,
 ) -> bin_error::Result<bwx::protocol::Response> {
-    let mut guard = CACHED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut guard = CACHED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
 
     if let Some(sock) = guard.as_mut() {
         match sock.send(msg).and_then(|()| sock.recv()) {
@@ -142,8 +144,7 @@ mod tests {
         let len = u32::from_be_bytes(len_buf);
         assert!(len > 0 && len <= MAX_MESSAGE);
 
-        let mut payload =
-            vec![0u8; usize::try_from(len).unwrap()];
+        let mut payload = vec![0u8; usize::try_from(len).unwrap()];
         std::io::Read::read_exact(&mut b, &mut payload).unwrap();
 
         let decoded: bwx::protocol::Request =

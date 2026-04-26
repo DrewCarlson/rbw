@@ -220,8 +220,7 @@ pub(super) fn check_agent_version() -> bin_error::Result<()> {
 }
 
 pub(super) fn invalidate_agent_version_cache() {
-    AGENT_VERSION_VERIFIED
-        .store(false, std::sync::atomic::Ordering::Release);
+    AGENT_VERSION_VERIFIED.store(false, std::sync::atomic::Ordering::Release);
 }
 
 fn version_or_quit() -> bin_error::Result<u32> {

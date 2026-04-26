@@ -23,8 +23,8 @@ impl Sock {
         }
 
         let Self(sock) = self;
-        let payload = rmp_serde::to_vec(res)
-            .context("failed to serialize message")?;
+        let payload =
+            rmp_serde::to_vec(res).context("failed to serialize message")?;
         let len = u32::try_from(payload.len()).map_err(|_| {
             bin_error::Error::msg(format!(
                 "outgoing message exceeds {MAX_MESSAGE}-byte cap"

@@ -112,8 +112,7 @@ impl Agent {
 /// Upper bound on how long the agent waits for a peer to finish
 /// sending a single request. A peer that sends a length prefix and
 /// then stalls otherwise pins this tokio task indefinitely.
-const RECV_TIMEOUT: std::time::Duration =
-    std::time::Duration::from_secs(30);
+const RECV_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 async fn handle_request(
     sock: &mut crate::sock::Sock,
