@@ -128,6 +128,36 @@ pub fn decrypt(
     }
 }
 
+pub fn decrypt_batch(
+    items: Vec<bwx::protocol::DecryptItem>,
+) -> bin_error::Result<Vec<bin_error::Result<String>>> {
+    let mut sock = connect()?;
+    sock.send(&build_request(bwx::protocol::Action::DecryptBatch { items }))?;
+
+    let res = sock.recv()?;
+    match res {
+        bwx::protocol::Response::DecryptBatch { results } => Ok(results
+            .into_iter()
+            .map(|r| match r {
+                bwx::protocol::DecryptItemResult::Ok { plaintext } => {
+                    Ok(plaintext)
+                }
+                bwx::protocol::DecryptItemResult::Err { error } => {
+                    Err(bin_error::Error::msg(format!(
+                        "failed to decrypt: {error}"
+                    )))
+                }
+            })
+            .collect()),
+        bwx::protocol::Response::Error { error } => {
+            Err(bin_error::Error::msg(format!("failed to decrypt: {error}")))
+        }
+        _ => Err(bin_error::Error::msg(format!(
+            "unexpected message: {res:?}"
+        ))),
+    }
+}
+
 pub fn encrypt(
     plaintext: &str,
     org_id: Option<&str>,

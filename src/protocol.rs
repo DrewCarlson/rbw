@@ -199,6 +199,20 @@ impl Environment {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct DecryptItem {
+    pub cipherstring: String,
+    pub entry_key: Option<String>,
+    pub org_id: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[serde(tag = "outcome")]
+pub enum DecryptItemResult {
+    Ok { plaintext: String },
+    Err { error: String },
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum Action {
@@ -212,6 +226,12 @@ pub enum Action {
         cipherstring: String,
         entry_key: Option<String>,
         org_id: Option<String>,
+    },
+    /// Decrypt many cipherstrings in one IPC. Touch ID is gated once for
+    /// the whole batch; per-item failures are surfaced in `results` so
+    /// the caller can decide whether to fail loud or skip the bad entry.
+    DecryptBatch {
+        items: Vec<DecryptItem>,
     },
     Encrypt {
         plaintext: String,
@@ -241,6 +261,9 @@ pub enum Response {
     },
     Decrypt {
         plaintext: String,
+    },
+    DecryptBatch {
+        results: Vec<DecryptItemResult>,
     },
     Encrypt {
         cipherstring: String,

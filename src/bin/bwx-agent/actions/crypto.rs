@@ -28,6 +28,52 @@ pub async fn decrypt(
     Ok(())
 }
 
+pub async fn decrypt_batch(
+    sock: &mut crate::sock::Sock,
+    state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
+    environment: &bwx::protocol::Environment,
+    items: Vec<bwx::protocol::DecryptItem>,
+    session_id: Option<&str>,
+    purpose: Option<&str>,
+) -> bin_error::Result<()> {
+    enforce_touchid_gate(
+        state.clone(),
+        bwx::touchid::Kind::VaultSecret,
+        session_id,
+        purpose,
+    )
+    .await?;
+
+    let mut results = Vec::with_capacity(items.len());
+    for item in items {
+        match decrypt_cipher(
+            state.clone(),
+            environment,
+            &item.cipherstring,
+            item.entry_key.as_deref(),
+            item.org_id.as_deref(),
+        )
+        .await
+        {
+            Ok(plaintext) => {
+                results.push(bwx::protocol::DecryptItemResult::Ok {
+                    plaintext,
+                });
+            }
+            Err(e) => {
+                results.push(bwx::protocol::DecryptItemResult::Err {
+                    error: format!("{e:#}"),
+                });
+            }
+        }
+    }
+
+    sock.send(&bwx::protocol::Response::DecryptBatch { results })
+        .await?;
+
+    Ok(())
+}
+
 pub async fn encrypt(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,

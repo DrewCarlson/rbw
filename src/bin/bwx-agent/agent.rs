@@ -170,6 +170,19 @@ async fn handle_request(
             .await?;
             true
         }
+        bwx::protocol::Action::DecryptBatch { items } => {
+            let items = items.clone();
+            crate::actions::decrypt_batch(
+                sock,
+                state.clone(),
+                &environment,
+                items,
+                session_id.as_deref(),
+                purpose.as_deref(),
+            )
+            .await?;
+            true
+        }
         bwx::protocol::Action::Encrypt { plaintext, org_id } => {
             crate::actions::encrypt(
                 sock,

@@ -24,82 +24,203 @@ pub(super) fn decrypt_field(
     }
 }
 
-pub(super) fn decrypt_list_cipher(
-    entry: &bwx::db::Entry,
+/// Batched form of `decrypt_list_cipher`: stages every per-field
+/// decrypt for the whole entry slice into a single `DecryptBatch` IPC,
+/// then assembles the results back into per-entry list ciphers. Avoids
+/// the N-IPC-per-entry blowup on `bwx list` for large vaults.
+pub(super) fn decrypt_list_ciphers(
+    entries: &[bwx::db::Entry],
     fields: &[ListField],
-) -> bin_error::Result<DecryptedListCipher> {
-    let id = entry.id.clone();
-    let name = if fields.contains(&ListField::Name) {
-        Some(crate::actions::decrypt(
-            &entry.name,
-            entry.key.as_deref(),
-            entry.org_id.as_deref(),
-        )?)
-    } else {
-        None
+) -> bin_error::Result<Vec<DecryptedListCipher>> {
+    struct Slots {
+        id: String,
+        entry_type: Option<String>,
+        name_idx: Option<usize>,
+        user_idx: Option<usize>,
+        folder_idx: Option<usize>,
+        // None means "list field not requested or not a Login"; an empty
+        // Vec means "Login with no URIs".
+        uri_indices: Option<Vec<usize>>,
+    }
+
+    let want_name = fields.contains(&ListField::Name);
+    let want_user = fields.contains(&ListField::User);
+    let want_folder = fields.contains(&ListField::Folder);
+    let want_uris = fields.contains(&ListField::Uri);
+    let want_type = fields.contains(&ListField::EntryType);
+
+    let mut items: Vec<bwx::protocol::DecryptItem> = Vec::new();
+    let mut slots: Vec<Slots> = Vec::with_capacity(entries.len());
+
+    let push = |items: &mut Vec<bwx::protocol::DecryptItem>,
+                    cipherstring: &str,
+                    entry_key: Option<&str>,
+                    org_id: Option<&str>|
+     -> usize {
+        items.push(bwx::protocol::DecryptItem {
+            cipherstring: cipherstring.to_string(),
+            entry_key: entry_key.map(std::string::ToString::to_string),
+            org_id: org_id.map(std::string::ToString::to_string),
+        });
+        items.len() - 1
     };
-    let user = if fields.contains(&ListField::User) {
-        match &entry.data {
-            bwx::db::EntryData::Login { username, .. } => decrypt_field(
-                Field::Username,
-                username.as_deref(),
+
+    for entry in entries {
+        let entry_type = if want_type {
+            Some(
+                match &entry.data {
+                    bwx::db::EntryData::Login { .. } => "Login",
+                    bwx::db::EntryData::Identity { .. } => "Identity",
+                    bwx::db::EntryData::SshKey { .. } => "SSH Key",
+                    bwx::db::EntryData::SecureNote => "Note",
+                    bwx::db::EntryData::Card { .. } => "Card",
+                }
+                .to_string(),
+            )
+        } else {
+            None
+        };
+
+        let name_idx = want_name.then(|| {
+            push(
+                &mut items,
+                &entry.name,
                 entry.key.as_deref(),
                 entry.org_id.as_deref(),
-            ),
-            _ => None,
-        }
-    } else {
-        None
-    };
-    let folder = if fields.contains(&ListField::Folder) {
-        // folder name should always be decrypted with the local key because
-        // folders are local to a specific user's vault, not the organization
-        entry
-            .folder
-            .as_ref()
-            .map(|folder| crate::actions::decrypt(folder, None, None))
-            .transpose()?
-    } else {
-        None
-    };
-    let uris = if fields.contains(&ListField::Uri) {
-        match &entry.data {
-            bwx::db::EntryData::Login { uris, .. } => Some(
-                uris.iter()
-                    .filter_map(|s| {
-                        decrypt_field(
-                            Field::Uris,
-                            Some(&s.uri),
-                            entry.key.as_deref(),
-                            entry.org_id.as_deref(),
-                        )
-                    })
-                    .collect(),
-            ),
-            _ => None,
-        }
-    } else {
-        None
-    };
-    let entry_type = fields
-        .contains(&ListField::EntryType)
-        .then_some(match &entry.data {
-            bwx::db::EntryData::Login { .. } => "Login",
-            bwx::db::EntryData::Identity { .. } => "Identity",
-            bwx::db::EntryData::SshKey { .. } => "SSH Key",
-            bwx::db::EntryData::SecureNote => "Note",
-            bwx::db::EntryData::Card { .. } => "Card",
-        })
-        .map(str::to_string);
+            )
+        });
 
-    Ok(DecryptedListCipher {
-        id,
-        name,
-        user,
-        folder,
-        uris,
-        entry_type,
-    })
+        let user_idx = if want_user {
+            match &entry.data {
+                bwx::db::EntryData::Login {
+                    username: Some(u), ..
+                } => Some(push(
+                    &mut items,
+                    u,
+                    entry.key.as_deref(),
+                    entry.org_id.as_deref(),
+                )),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        // Folder names always use the local key (folders are scoped to
+        // the user's own vault, not the organisation).
+        let folder_idx = if want_folder {
+            entry
+                .folder
+                .as_ref()
+                .map(|f| push(&mut items, f, None, None))
+        } else {
+            None
+        };
+
+        let uri_indices = if want_uris {
+            match &entry.data {
+                bwx::db::EntryData::Login { uris, .. } => Some(
+                    uris.iter()
+                        .map(|s| {
+                            push(
+                                &mut items,
+                                &s.uri,
+                                entry.key.as_deref(),
+                                entry.org_id.as_deref(),
+                            )
+                        })
+                        .collect(),
+                ),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        slots.push(Slots {
+            id: entry.id.clone(),
+            entry_type,
+            name_idx,
+            user_idx,
+            folder_idx,
+            uri_indices,
+        });
+    }
+
+    let results = if items.is_empty() {
+        Vec::new()
+    } else {
+        crate::actions::decrypt_batch(items)?
+    };
+
+    let take = |idx: Option<usize>, label: &str| -> Option<String> {
+        idx.and_then(|i| match &results[i] {
+            Ok(s) => Some(s.clone()),
+            Err(e) => {
+                log::warn!("failed to decrypt {label}: {e}");
+                None
+            }
+        })
+    };
+
+    let mut out = Vec::with_capacity(slots.len());
+    for s in slots {
+        let name = if want_name {
+            // Per-entry name decrypt failure is fatal, matching the
+            // existing single-entry path (`decrypt_list_cipher`).
+            match s.name_idx {
+                Some(i) => match &results[i] {
+                    Ok(s) => Some(s.clone()),
+                    Err(e) => {
+                        return Err(crate::bin_error::err!(
+                            "failed to decrypt entry name: {e}"
+                        ));
+                    }
+                },
+                None => None,
+            }
+        } else {
+            None
+        };
+        let user = take(s.user_idx, "username");
+        let folder = if want_folder {
+            match s.folder_idx {
+                Some(i) => match &results[i] {
+                    Ok(p) => Some(p.clone()),
+                    Err(e) => {
+                        return Err(crate::bin_error::err!(
+                            "failed to decrypt folder name: {e}"
+                        ));
+                    }
+                },
+                None => None,
+            }
+        } else {
+            None
+        };
+        let uris = s.uri_indices.map(|idxs| {
+            idxs.into_iter()
+                .filter_map(|i| match &results[i] {
+                    Ok(p) => Some(p.clone()),
+                    Err(e) => {
+                        log::warn!("failed to decrypt uri: {e}");
+                        None
+                    }
+                })
+                .collect()
+        });
+
+        out.push(DecryptedListCipher {
+            id: s.id,
+            name,
+            user,
+            folder,
+            uris,
+            entry_type: s.entry_type,
+        });
+    }
+
+    Ok(out)
 }
 
 pub(super) fn decrypt_search_cipher(

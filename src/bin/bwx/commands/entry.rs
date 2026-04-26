@@ -2,7 +2,7 @@ use std::io::Write as _;
 
 use super::auth::unlock;
 use super::cipher::{DecryptedData, DecryptedListCipher};
-use super::decrypt::{decrypt_list_cipher, decrypt_search_cipher};
+use super::decrypt::{decrypt_list_ciphers, decrypt_search_cipher};
 use super::field::ListField;
 use super::find::{find_entry, Needle};
 use super::totp::generate_totp;
@@ -22,11 +22,7 @@ pub fn list(fields: &[String], raw: bool) -> bin_error::Result<()> {
     unlock()?;
 
     let db = load_db()?;
-    let mut entries: Vec<DecryptedListCipher> = db
-        .entries
-        .iter()
-        .map(|entry| decrypt_list_cipher(entry, &fields))
-        .collect::<bin_error::Result<_>>()?;
+    let mut entries = decrypt_list_ciphers(&db.entries, &fields)?;
     entries.sort_unstable_by(|a, b| a.name.cmp(&b.name));
 
     print_entry_list(&entries, &fields, raw)?;

@@ -20,6 +20,10 @@
   loop runs the same patterns against every cipher several times per
   search; compiling once per pattern keeps regex-heavy `bwx get`
   callers off the hot path.
+* `bwx list` now decrypts the whole vault in a single `DecryptBatch`
+  IPC instead of one round-trip per field. Adds `Action::DecryptBatch`
+  and `Response::DecryptBatch` to the agent protocol; per-item failures
+  are reported back to the caller without aborting the batch.
 
 ## [2.1.0] - 2026-04-26
 
