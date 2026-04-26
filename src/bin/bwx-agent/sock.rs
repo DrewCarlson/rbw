@@ -1,13 +1,11 @@
 use crate::bin_error::{self, ContextExt as _};
-use tokio::io::{
-    AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _,
-};
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
-/// Cap on the size of a single JSON-line request from the CLI. Blocks a
+/// Cap on the size of a single framed message from the CLI. Blocks a
 /// misbehaving (or malicious, if the 0o700-dir assumption is violated)
-/// client from pushing the agent into unbounded heap growth with a
-/// newline-free stream.
-const MAX_MESSAGE: u64 = 16 * 1024 * 1024;
+/// client from pushing the agent into unbounded heap growth via an
+/// oversized length prefix.
+const MAX_MESSAGE: u32 = 16 * 1024 * 1024;
 
 pub struct Sock(tokio::net::UnixStream);
 
@@ -25,14 +23,22 @@ impl Sock {
         }
 
         let Self(sock) = self;
-        sock.write_all(
-            serde_json::to_string(res)
-                .context("failed to serialize message")?
-                .as_bytes(),
-        )
-        .await
-        .context("failed to write message to socket")?;
-        sock.write_all(b"\n")
+        let payload = rmp_serde::to_vec(res)
+            .context("failed to serialize message")?;
+        let len = u32::try_from(payload.len()).map_err(|_| {
+            bin_error::Error::msg(format!(
+                "outgoing message exceeds {MAX_MESSAGE}-byte cap"
+            ))
+        })?;
+        if len > MAX_MESSAGE {
+            return Err(bin_error::Error::msg(format!(
+                "outgoing message exceeds {MAX_MESSAGE}-byte cap"
+            )));
+        }
+        sock.write_all(&len.to_be_bytes())
+            .await
+            .context("failed to write message to socket")?;
+        sock.write_all(&payload)
             .await
             .context("failed to write message to socket")?;
         Ok(())
@@ -43,22 +49,35 @@ impl Sock {
     ) -> bin_error::Result<std::result::Result<bwx::protocol::Request, String>>
     {
         let Self(sock) = self;
-        let limited = (&mut *sock).take(MAX_MESSAGE);
-        let mut buf = tokio::io::BufReader::new(limited);
-        let mut line = String::new();
-        buf.read_line(&mut line)
-            .await
-            .context("failed to read message from socket")?;
-        if line.is_empty() {
-            return Ok(Err("connection closed".to_string()));
+        let mut len_buf = [0u8; 4];
+        match sock.read_exact(&mut len_buf).await {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                return Ok(Err("connection closed".to_string()));
+            }
+            Err(e) => {
+                return Err(bin_error::Error::with_context(
+                    e,
+                    "failed to read message from socket",
+                ));
+            }
         }
-        if !line.ends_with('\n') {
+        let len = u32::from_be_bytes(len_buf);
+        if len > MAX_MESSAGE {
             return Ok(Err(format!(
                 "message exceeds {MAX_MESSAGE}-byte cap"
             )));
         }
-        Ok(serde_json::from_str(&line)
-            .map_err(|e| format!("failed to parse message '{line}': {e}")))
+        let mut payload = vec![
+            0u8;
+            usize::try_from(len)
+                .expect("16 MiB-capped u32 fits in usize")
+        ];
+        sock.read_exact(&mut payload)
+            .await
+            .context("failed to read message from socket")?;
+        Ok(rmp_serde::from_slice(&payload)
+            .map_err(|e| format!("failed to parse message: {e}")))
     }
 }
 

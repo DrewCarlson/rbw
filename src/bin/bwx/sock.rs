@@ -1,12 +1,12 @@
-use std::io::{BufRead as _, Write as _};
+use std::io::{Read as _, Write as _};
 use std::sync::Mutex;
 
 use crate::bin_error::{self, ContextExt as _};
 
-/// Cap on the size of a single JSON-line response from the agent. Blocks
-/// a runaway or malicious agent from pushing the CLI into unbounded heap
-/// growth.
-const MAX_MESSAGE: u64 = 16 * 1024 * 1024;
+/// Cap on the size of a single framed message from the agent. Blocks a
+/// runaway or malicious agent from pushing the CLI into unbounded heap
+/// growth via an oversized length prefix.
+const MAX_MESSAGE: u32 = 16 * 1024 * 1024;
 
 /// Process-local cached connection. Reused across IPC calls in the same
 /// `bwx` invocation so we don't pay a fresh connect()/handshake on every
@@ -40,30 +40,44 @@ impl Sock {
         msg: &bwx::protocol::Request,
     ) -> bin_error::Result<()> {
         let Self(sock) = self;
-        sock.write_all(
-            serde_json::to_string(msg)
-                .context("failed to serialize message to agent")?
-                .as_bytes(),
-        )
-        .context("failed to send message to agent")?;
-        sock.write_all(b"\n")
+        let payload = rmp_serde::to_vec(msg)
+            .context("failed to serialize message to agent")?;
+        let len = u32::try_from(payload.len()).map_err(|_| {
+            bin_error::Error::msg(format!(
+                "outgoing message exceeds {MAX_MESSAGE}-byte cap"
+            ))
+        })?;
+        if len > MAX_MESSAGE {
+            return Err(bin_error::Error::msg(format!(
+                "outgoing message exceeds {MAX_MESSAGE}-byte cap"
+            )));
+        }
+        sock.write_all(&len.to_be_bytes())
+            .context("failed to send message to agent")?;
+        sock.write_all(&payload)
             .context("failed to send message to agent")?;
         Ok(())
     }
 
     pub fn recv(&mut self) -> bin_error::Result<bwx::protocol::Response> {
         let Self(sock) = self;
-        let limited = std::io::Read::take(&mut *sock, MAX_MESSAGE);
-        let mut buf = std::io::BufReader::new(limited);
-        let mut line = String::new();
-        buf.read_line(&mut line)
+        let mut len_buf = [0u8; 4];
+        sock.read_exact(&mut len_buf)
             .context("failed to read message from agent")?;
-        if !line.ends_with('\n') {
+        let len = u32::from_be_bytes(len_buf);
+        if len > MAX_MESSAGE {
             return Err(bin_error::Error::msg(format!(
                 "agent response exceeds {MAX_MESSAGE}-byte cap"
             )));
         }
-        serde_json::from_str(&line)
+        let mut payload = vec![
+            0u8;
+            usize::try_from(len)
+                .expect("16 MiB-capped u32 fits in usize")
+        ];
+        sock.read_exact(&mut payload)
+            .context("failed to read message from agent")?;
+        rmp_serde::from_slice(&payload)
             .context("failed to parse message from agent")
     }
 }
@@ -111,6 +125,45 @@ pub fn request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn framed_send_writes_length_prefix_then_msgpack() {
+        let (a, mut b) = std::os::unix::net::UnixStream::pair().unwrap();
+        let mut sock = Sock(a);
+
+        let req = bwx::protocol::Request::new(
+            bwx::protocol::Environment::default(),
+            bwx::protocol::Action::Version,
+        );
+        sock.send(&req).unwrap();
+
+        let mut len_buf = [0u8; 4];
+        std::io::Read::read_exact(&mut b, &mut len_buf).unwrap();
+        let len = u32::from_be_bytes(len_buf);
+        assert!(len > 0 && len <= MAX_MESSAGE);
+
+        let mut payload =
+            vec![0u8; usize::try_from(len).unwrap()];
+        std::io::Read::read_exact(&mut b, &mut payload).unwrap();
+
+        let decoded: bwx::protocol::Request =
+            rmp_serde::from_slice(&payload).unwrap();
+        let (action, _, _, _) = decoded.into_parts();
+        assert!(matches!(action, bwx::protocol::Action::Version));
+    }
+
+    #[test]
+    fn framed_recv_rejects_oversized_length() {
+        let (a, mut b) = std::os::unix::net::UnixStream::pair().unwrap();
+        let mut sock = Sock(a);
+
+        let bogus_len: u32 = MAX_MESSAGE + 1;
+        std::io::Write::write_all(&mut b, &bogus_len.to_be_bytes()).unwrap();
+        // Don't bother sending payload; recv must reject before reading it.
+        let res = sock.recv();
+        let err = res.unwrap_err();
+        assert!(format!("{err}").contains("cap"), "got: {err}");
+    }
 
     #[test]
     fn invalidate_cached_clears_slot() {

@@ -34,6 +34,13 @@
   `actions/attest-build-provenance` to `actions/attest@v4.1.0` (the
   upstream-recommended target for new implementations; the old action
   is now just a passthrough wrapper).
+* **Wire-format change.** CLI ↔ agent IPC moves from line-delimited
+  JSON to length-prefixed MessagePack (`rmp-serde`). 4-byte big-endian
+  payload size, 16 MiB cap on both directions, same `Request`/
+  `Response` enum shapes. Smaller and faster to encode/decode for
+  large payloads (`bwx list`, `DecryptBatch`). **Run `bwx stop-agent`
+  after upgrading** so the new CLI doesn't try to talk to a still-
+  running pre-2.1.1 agent.
 
 ## [2.1.0] - 2026-04-26
 

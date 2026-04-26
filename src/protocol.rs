@@ -277,3 +277,92 @@ pub enum Response {
         keychain_label: Option<String>,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rmp_roundtrip<T>(value: &T) -> T
+    where
+        T: serde::Serialize + serde::de::DeserializeOwned,
+    {
+        let bytes = rmp_serde::to_vec(value).unwrap();
+        rmp_serde::from_slice(&bytes).unwrap()
+    }
+
+    #[test]
+    fn action_decrypt_msgpack_roundtrip() {
+        let a = Action::Decrypt {
+            cipherstring: "2.aaa|bbb|ccc".to_string(),
+            entry_key: Some("ek".to_string()),
+            org_id: None,
+        };
+        let bytes = rmp_serde::to_vec(&a).unwrap();
+        // Sanity-check: msgpack should be tighter than JSON for this
+        // payload. JSON of the same struct is ~95 bytes.
+        assert!(bytes.len() < 90, "msgpack payload {} bytes", bytes.len());
+        match rmp_roundtrip(&a) {
+            Action::Decrypt {
+                cipherstring,
+                entry_key,
+                org_id,
+            } => {
+                assert_eq!(cipherstring, "2.aaa|bbb|ccc");
+                assert_eq!(entry_key.as_deref(), Some("ek"));
+                assert_eq!(org_id, None);
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decrypt_batch_roundtrip_preserves_order_and_results() {
+        let req = Action::DecryptBatch {
+            items: vec![
+                DecryptItem {
+                    cipherstring: "a".into(),
+                    entry_key: None,
+                    org_id: None,
+                },
+                DecryptItem {
+                    cipherstring: "b".into(),
+                    entry_key: Some("k".into()),
+                    org_id: Some("org".into()),
+                },
+            ],
+        };
+        match rmp_roundtrip(&req) {
+            Action::DecryptBatch { items } => {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0].cipherstring, "a");
+                assert_eq!(items[1].entry_key.as_deref(), Some("k"));
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+
+        let resp = Response::DecryptBatch {
+            results: vec![
+                DecryptItemResult::Ok {
+                    plaintext: "hello".into(),
+                },
+                DecryptItemResult::Err {
+                    error: "decrypt failed".into(),
+                },
+            ],
+        };
+        match rmp_roundtrip(&resp) {
+            Response::DecryptBatch { results } => {
+                assert_eq!(results.len(), 2);
+                assert!(matches!(
+                    results[0],
+                    DecryptItemResult::Ok { ref plaintext } if plaintext == "hello"
+                ));
+                assert!(matches!(
+                    results[1],
+                    DecryptItemResult::Err { ref error } if error == "decrypt failed"
+                ));
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+}
