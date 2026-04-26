@@ -165,20 +165,12 @@ mod imp {
     }
 }
 
-#[cfg(target_os = "macos")]
-pub use imp::agent_team_id;
-
-#[cfg(not(target_os = "macos"))]
-pub fn agent_team_id() -> Option<&'static str> {
-    None
-}
-
 /// Run the same-team code-requirement check on a peer. No-op when the
 /// agent itself has no team identifier to compare against (ad-hoc /
 /// unsigned / non-macOS) so dev and fork builds keep working.
 #[cfg(target_os = "macos")]
 pub fn check_peer_team(peer_pid: Option<i32>) -> bin_error::Result<()> {
-    let Some(team) = agent_team_id() else {
+    let Some(team) = imp::agent_team_id() else {
         return Ok(());
     };
     let Some(pid) = peer_pid else {
@@ -190,7 +182,10 @@ pub fn check_peer_team(peer_pid: Option<i32>) -> bin_error::Result<()> {
     imp::verify_peer_team(pid, team)
 }
 
+// Result return kept for cross-platform signature parity with the
+// macOS implementation.
 #[cfg(not(target_os = "macos"))]
+#[allow(clippy::unnecessary_wraps)]
 pub fn check_peer_team(_peer_pid: Option<i32>) -> bin_error::Result<()> {
     Ok(())
 }
