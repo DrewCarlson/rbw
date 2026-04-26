@@ -28,6 +28,11 @@ pub async fn decrypt(
     Ok(())
 }
 
+/// Hard ceiling on items in a single `DecryptBatch`. Comfortably above
+/// any realistic vault size (~thousands of entries × a handful of
+/// fields) and well under what a 16 MiB request frame could pack.
+const BATCH_MAX_ITEMS: usize = 10_000;
+
 pub async fn decrypt_batch(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
@@ -36,6 +41,17 @@ pub async fn decrypt_batch(
     session_id: Option<&str>,
     purpose: Option<&str>,
 ) -> bin_error::Result<()> {
+    if items.len() > BATCH_MAX_ITEMS {
+        sock.send(&bwx::protocol::Response::Error {
+            error: format!(
+                "decrypt batch too large ({} items, max {BATCH_MAX_ITEMS})",
+                items.len()
+            ),
+        })
+        .await?;
+        return Ok(());
+    }
+
     enforce_touchid_gate(
         state.clone(),
         bwx::touchid::Kind::VaultSecret,
@@ -62,7 +78,7 @@ pub async fn decrypt_batch(
             }
             Err(e) => {
                 results.push(bwx::protocol::DecryptItemResult::Err {
-                    error: format!("{e:#}"),
+                    error: sanitize_batch_item_error(&e),
                 });
             }
         }
@@ -72,6 +88,19 @@ pub async fn decrypt_batch(
         .await?;
 
     Ok(())
+}
+
+/// Forward only the top-level context for a per-item batch failure.
+/// We intentionally drop the source chain so a future error wrapping
+/// (path, token, ciphertext bytes) can't ride out over IPC; the
+/// categorical message is enough to tell `bwx list` why a row was
+/// dropped.
+fn sanitize_batch_item_error(e: &bin_error::Error) -> String {
+    match e {
+        bin_error::Error::Msg(s) => s.clone(),
+        bin_error::Error::WithContext { context, .. } => context.clone(),
+        bin_error::Error::Boxed(_) => "decrypt failed".to_string(),
+    }
 }
 
 pub async fn encrypt(
@@ -158,4 +187,38 @@ pub async fn version(sock: &mut crate::sock::Sock) -> bin_error::Result<()> {
     .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_drops_source_chain_for_with_context() {
+        let inner = std::io::Error::other(
+            "<sensitive: mac mismatch on 0xabcdef...>",
+        );
+        let wrapped =
+            bin_error::Error::with_context(inner, "failed to decrypt entry");
+        let out = sanitize_batch_item_error(&wrapped);
+        assert_eq!(out, "failed to decrypt entry");
+        assert!(!out.contains("0xabcdef"));
+    }
+
+    #[test]
+    fn sanitize_passes_through_msg_variant() {
+        let e = bin_error::Error::Msg("agent locked".into());
+        assert_eq!(sanitize_batch_item_error(&e), "agent locked");
+    }
+
+    #[test]
+    fn sanitize_boxed_returns_generic() {
+        let io_err = std::io::Error::other(
+            "/tmp/secret-token-AKIAIOSFODNN7EXAMPLE",
+        );
+        let boxed = bin_error::Error::Boxed(Box::new(io_err));
+        let out = sanitize_batch_item_error(&boxed);
+        assert_eq!(out, "decrypt failed");
+        assert!(!out.contains("AKIA"));
+    }
 }

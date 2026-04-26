@@ -27,6 +27,9 @@
 * Reuse a single `UnixStream` for every IPC inside a `bwx` invocation
   instead of opening a fresh connection per action. Cached socket is
   cleared on send/recv failure (transparent reconnect) and on `Quit`.
+* Cap `DecryptBatch` requests at 10,000 items and forward only the
+  top-level error context for per-item failures, so the agent doesn't
+  echo wrapped error chains over IPC.
 
 ## [2.1.0] - 2026-04-26
 
