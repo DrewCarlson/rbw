@@ -1190,6 +1190,14 @@ fn test_decode_totp_secret() {
     assert!(decoded == want, "strips spaces");
 }
 
+/// Splits the joined fixture used by these tests into the parallel
+/// slices `find_entry_raw` actually takes.
+fn split_fixture(
+    entries: &[(bwx::db::Entry, DecryptedSearchCipher)],
+) -> (Vec<bwx::db::Entry>, Vec<DecryptedSearchCipher>) {
+    entries.iter().cloned().unzip()
+}
+
 #[track_caller]
 fn one_match(
     entries: &[(bwx::db::Entry, DecryptedSearchCipher)],
@@ -1199,9 +1207,11 @@ fn one_match(
     idx: usize,
     ignore_case: bool,
 ) -> bool {
+    let (es, ds) = split_fixture(entries);
     entries_eq(
         &find_entry_raw(
-            entries,
+            &es,
+            &ds,
             &parse_needle(needle).unwrap(),
             username,
             folder,
@@ -1220,8 +1230,10 @@ fn no_matches(
     folder: Option<&str>,
     ignore_case: bool,
 ) -> bool {
+    let (es, ds) = split_fixture(entries);
     let res = find_entry_raw(
-        entries,
+        &es,
+        &ds,
         &parse_needle(needle).unwrap(),
         username,
         folder,
@@ -1242,8 +1254,10 @@ fn many_matches(
     folder: Option<&str>,
     ignore_case: bool,
 ) -> bool {
+    let (es, ds) = split_fixture(entries);
     let res = find_entry_raw(
-        entries,
+        &es,
+        &ds,
         &parse_needle(needle).unwrap(),
         username,
         folder,
