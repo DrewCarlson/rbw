@@ -30,6 +30,10 @@
 * Cap `DecryptBatch` requests at 10,000 items and forward only the
   top-level error context for per-item failures, so the agent doesn't
   echo wrapped error chains over IPC.
+* Release workflow attestation step migrated from
+  `actions/attest-build-provenance` to `actions/attest@v4.1.0` (the
+  upstream-recommended target for new implementations; the old action
+  is now just a passthrough wrapper).
 
 ## [2.1.0] - 2026-04-26
 
