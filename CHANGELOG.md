@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.2.2] - Unreleased
+## [2.3.0] - 2026-04-27
 
 * **Faster `--folder` lookup in `bwx add`/`generate`.** When passeing
   `--folder <name>`, the CLI used to decrypt every folder name one
