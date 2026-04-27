@@ -2,6 +2,11 @@
 
 ## [2.2.2] - Unreleased
 
+* **Faster `--folder` lookup in `bwx add`/`generate`.** When passeing
+  `--folder <name>`, the CLI used to decrypt every folder name one
+  IPC at a time just to check whether the requested folder already
+  existed. Folder lookup now batches into a single `DecryptBatch`,
+  one IPC regardless of folder count.
 * **Faster `bwx add`/`generate`/`edit`.** New `EncryptBatch` IPC
   (mirrors `DecryptBatch`): the agent encrypts a vector of
   plaintexts in one shot and returns per-item results. `bwx add`

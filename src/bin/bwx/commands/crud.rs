@@ -117,12 +117,19 @@ pub fn add(
             save_db(&db)?;
         }
 
-        let folders: Vec<(String, String)> = folders
+        let items: Vec<_> = folders
             .iter()
-            .cloned()
-            .map(|(id, name)| {
-                Ok((id, crate::actions::decrypt(&name, None, None)?))
+            .map(|(_, name)| bwx::protocol::DecryptItem {
+                cipherstring: name.clone(),
+                entry_key: None,
+                org_id: None,
             })
+            .collect();
+        let names = crate::actions::decrypt_batch(items)?;
+        let folders: Vec<(String, String)> = folders
+            .into_iter()
+            .zip(names)
+            .map(|((id, _), name)| Ok((id, name?)))
             .collect::<bin_error::Result<_>>()?;
 
         for (id, name) in folders {
