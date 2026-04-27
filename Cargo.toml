@@ -1,6 +1,6 @@
 [package]
 name = "bwx-cli"
-version = "2.3.0"
+version = "2.3.1"
 authors = ["Drew Carlson <its@drews.website>", "Jesse Luehrs <doy@tozt.net>"]
 edition = "2021"
 rust-version = "1.82.0"

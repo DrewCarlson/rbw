@@ -42,6 +42,17 @@ pick_identity() {
   printf "%s" "-"
 }
 
+# Extract the 10-char Apple Team ID from a Developer-ID identity
+# string like `Developer ID Application: Some Name (TEAMID0123)`.
+# Honors $TEAM_ID env override. Returns empty string on miss.
+pick_team_id() {
+  if [ -n "${TEAM_ID:-}" ]; then
+    printf "%s" "$TEAM_ID"
+    return
+  fi
+  printf "%s" "$1" | sed -nE 's/.*\(([0-9A-Z]{10})\).*/\1/p'
+}
+
 IDENTITY_STR="$(pick_identity)"
 case "$IDENTITY_STR" in
   "Developer ID Application"*) USE_ENTITLEMENTS=1 ;;
@@ -70,10 +81,26 @@ echo "signing mode: $IDENTITY_STR"
 # `allow-unsigned-executable-memory` entitlement is added so AMFI
 # doesn't kill the Rust binary on first run — Rust's allocator + a few
 # crates touch executable pages in ways the strict default rejects.
-# Local dev (no env var) skips both.
+#
+# `application-identifier` + `keychain-access-groups` scope bwx into
+# the data-protection keychain under `TEAMID.bwx`. Without them
+# `SecItemAdd` returns errSecMissingEntitlement (-34018) because the
+# DP keychain has no group to associate items with. The runtime side
+# in `src/touchid/keychain.rs` queries its own entitlements and only
+# uses the DP keychain when this pair is present, so unentitled
+# install paths (cargo-install, ad-hoc, Apple Development) keep
+# working against the legacy file keychain.
+#
+# Local dev (no env var) skips hardened runtime entirely.
 ENTITLEMENTS="$(mktemp -t bwx-entitlements).plist"
 trap "rm -f '$ENTITLEMENTS'" EXIT
 if [ "${HARDENED_RUNTIME:-0}" = "1" ]; then
+  TEAM_ID_RESOLVED="$(pick_team_id "$IDENTITY_STR")"
+  if [ -z "$TEAM_ID_RESOLVED" ]; then
+    echo "error: could not extract Team ID from identity '$IDENTITY_STR';" >&2
+    echo "       set TEAM_ID=XXXXXXXXXX to override." >&2
+    exit 1
+  fi
   cat > "$ENTITLEMENTS" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -82,6 +109,12 @@ if [ "${HARDENED_RUNTIME:-0}" = "1" ]; then
 <dict>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
+  <key>com.apple.application-identifier</key>
+  <string>${TEAM_ID_RESOLVED}.bwx</string>
+  <key>keychain-access-groups</key>
+  <array>
+    <string>${TEAM_ID_RESOLVED}.bwx</string>
+  </array>
 </dict>
 </plist>
 EOF
@@ -107,3 +140,6 @@ if [ "${HARDENED_RUNTIME:-0}" = "1" ]; then
 fi
 echo "Touch ID is enforced via a presence check before the agent"
 echo "releases the wrapper key; no Keychain ACL is attached."
+if [ "${HARDENED_RUNTIME:-0}" = "1" ]; then
+  echo "keychain scope: data-protection (group ${TEAM_ID_RESOLVED}.bwx)"
+fi

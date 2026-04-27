@@ -1,11 +1,18 @@
 //! Keychain storage for bwx's Touch ID wrapper key.
 //!
-//! All `SecItem*` calls pass `kSecUseDataProtectionKeychain = true`,
-//! so items live in the modern data-protection keychain rather than
-//! the legacy file-based login keychain. Scoping is by the binary's
-//! team-identifier (or per-binary identifier when ad-hoc signed); no
-//! per-item ACL prompts. `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
-//! keeps the bytes off iCloud Keychain and bound to this device.
+//! At process start we check whether the running binary carries an
+//! `application-identifier` entitlement (set by `scripts/sign-macos.sh`
+//! on the Developer-ID path alongside `keychain-access-groups`). If
+//! present, every `SecItem*` call passes `kSecUseDataProtectionKeychain
+//! = true` so items live in the modern data-protection keychain,
+//! scoped by `TEAMID.bwx`, with no per-item ACL prompts. If absent —
+//! `cargo install`, ad-hoc, `Apple Development`, local dev — we fall
+//! back to the legacy file-based keychain, which works without
+//! entitlements. (Without one of those install paths a DP-keychain
+//! call would return `errSecMissingEntitlement` / -34018.)
+//!
+//! Either path uses `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`,
+//! keeping the bytes off iCloud Keychain and bound to this device.
 //! Touch ID enforcement happens in the agent via `require_presence`
 //! before this module is asked to load the bytes.
 #![allow(
@@ -37,11 +44,74 @@ use security_framework_sys::keychain_item::{
 // exported), and `kSecUseDataProtectionKeychain` aren't re-exported by
 // security-framework-sys. They're singleton CFStringRefs from
 // Security.framework resolved by the system linker.
+//
+// `SecTask*` are used to read our own entitlements at startup; the
+// presence of `application-identifier` decides whether we use the
+// data-protection keychain or the legacy file keychain.
 #[link(name = "Security", kind = "framework")]
 unsafe extern "C" {
     static kSecUseOperationPrompt: CFStringRef;
     static kSecAttrAccessible: CFStringRef;
     static kSecUseDataProtectionKeychain: CFStringRef;
+
+    fn SecTaskCreateFromSelf(allocator: CFTypeRef) -> CFTypeRef;
+    fn SecTaskCopyValueForEntitlement(
+        task: CFTypeRef,
+        entitlement: CFStringRef,
+        error: *mut CFTypeRef,
+    ) -> CFTypeRef;
+}
+
+/// Decide once whether this binary may use the data-protection
+/// keychain. Cached for the life of the process — entitlements don't
+/// change after exec.
+fn use_dp_keychain() -> bool {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<bool> = OnceLock::new();
+    *CACHE.get_or_init(|| unsafe {
+        let task = SecTaskCreateFromSelf(std::ptr::null());
+        if task.is_null() {
+            return false;
+        }
+        let key = CFString::new("application-identifier");
+        let mut err: CFTypeRef = std::ptr::null();
+        let value = SecTaskCopyValueForEntitlement(
+            task,
+            key.as_concrete_TypeRef(),
+            &raw mut err,
+        );
+        CFRelease(task);
+        let has = !value.is_null();
+        if !value.is_null() {
+            CFRelease(value);
+        }
+        if !err.is_null() {
+            CFRelease(err);
+        }
+        has
+    })
+}
+
+/// Append the `kSecUseDataProtectionKeychain = true` pair when this
+/// binary carries an `application-identifier` entitlement. Each call
+/// site builds a base attribute list as a `Vec`; this helper keeps the
+/// per-callsite branching out of the way.
+fn push_dp_flag(
+    pairs: &mut Vec<(
+        core_foundation::base::CFType,
+        core_foundation::base::CFType,
+    )>,
+) {
+    if use_dp_keychain() {
+        unsafe {
+            let use_dp =
+                CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain);
+            pairs.push((
+                use_dp.as_CFType(),
+                CFBoolean::true_value().as_CFType(),
+            ));
+        }
+    }
 }
 
 /// Keychain generic-password `service` value shared by all bwx Touch ID
@@ -92,17 +162,16 @@ pub fn store(label: &str, secret: &[u8]) -> Result<(), Error> {
         let attr_account = CFString::wrap_under_get_rule(kSecAttrAccount);
         let value_data = CFString::wrap_under_get_rule(kSecValueData);
         let class_key = CFString::wrap_under_get_rule(kSecClass);
-        let use_dp =
-            CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain);
 
-        let dict = CFDictionary::from_CFType_pairs(&[
+        let mut pairs = vec![
             (class_key.as_CFType(), class.as_CFType()),
             (attr_service.as_CFType(), service.as_CFType()),
             (attr_account.as_CFType(), account.as_CFType()),
             (value_data.as_CFType(), data.as_CFType()),
             (attr_accessible.as_CFType(), accessible_v.as_CFType()),
-            (use_dp.as_CFType(), CFBoolean::true_value().as_CFType()),
-        ]);
+        ];
+        push_dp_flag(&mut pairs);
+        let dict = CFDictionary::from_CFType_pairs(&pairs);
 
         let status =
             SecItemAdd(dict.as_concrete_TypeRef(), std::ptr::null_mut());
@@ -129,18 +198,17 @@ pub fn load(label: &str, prompt: &str) -> Result<crate::locked::Vec, Error> {
         let match_limit_one = CFNumber::from(1i64);
         let use_operation_prompt =
             CFString::wrap_under_get_rule(kSecUseOperationPrompt);
-        let use_dp =
-            CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain);
 
-        let dict = CFDictionary::from_CFType_pairs(&[
+        let mut pairs = vec![
             (class_key.as_CFType(), class.as_CFType()),
             (attr_service.as_CFType(), service.as_CFType()),
             (attr_account.as_CFType(), account.as_CFType()),
             (return_data.as_CFType(), CFBoolean::true_value().as_CFType()),
             (match_limit.as_CFType(), match_limit_one.as_CFType()),
             (use_operation_prompt.as_CFType(), prompt_cf.as_CFType()),
-            (use_dp.as_CFType(), CFBoolean::true_value().as_CFType()),
-        ]);
+        ];
+        push_dp_flag(&mut pairs);
+        let dict = CFDictionary::from_CFType_pairs(&pairs);
 
         let mut result: CFTypeRef = std::ptr::null();
         let status =
@@ -176,15 +244,14 @@ pub fn delete(label: &str) -> Result<(), Error> {
         let class_key = CFString::wrap_under_get_rule(kSecClass);
         let attr_service = CFString::wrap_under_get_rule(kSecAttrService);
         let attr_account = CFString::wrap_under_get_rule(kSecAttrAccount);
-        let use_dp =
-            CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain);
 
-        let dict = CFDictionary::from_CFType_pairs(&[
+        let mut pairs = vec![
             (class_key.as_CFType(), class.as_CFType()),
             (attr_service.as_CFType(), service.as_CFType()),
             (attr_account.as_CFType(), account.as_CFType()),
-            (use_dp.as_CFType(), CFBoolean::true_value().as_CFType()),
-        ]);
+        ];
+        push_dp_flag(&mut pairs);
+        let dict = CFDictionary::from_CFType_pairs(&pairs);
 
         let status = SecItemDelete(dict.as_concrete_TypeRef());
         match status {
@@ -206,19 +273,18 @@ pub fn exists(label: &str) -> Result<bool, Error> {
         let attr_account = CFString::wrap_under_get_rule(kSecAttrAccount);
         let match_limit = CFString::wrap_under_get_rule(kSecMatchLimit);
         let match_limit_one = CFNumber::from(1i64);
-        let use_dp =
-            CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain);
 
         // Don't request return_data — that would force a biometric
         // prompt. Just ask whether the record exists by matching on
         // service+account.
-        let dict = CFDictionary::from_CFType_pairs(&[
+        let mut pairs = vec![
             (class_key.as_CFType(), class.as_CFType()),
             (attr_service.as_CFType(), service.as_CFType()),
             (attr_account.as_CFType(), account.as_CFType()),
             (match_limit.as_CFType(), match_limit_one.as_CFType()),
-            (use_dp.as_CFType(), CFBoolean::true_value().as_CFType()),
-        ]);
+        ];
+        push_dp_flag(&mut pairs);
+        let dict = CFDictionary::from_CFType_pairs(&pairs);
 
         let mut result: CFTypeRef = std::ptr::null();
         let status =

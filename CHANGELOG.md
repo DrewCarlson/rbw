@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.3.1] - 2026-04-27
+
+* **Fix `bwx touchid enroll` failing with `SecItemAdd: status -34018`
+  on signed builds.** 2.3.0 moved Touch ID wrapper-key storage to the
+  data-protection keychain, but the Developer-ID signing path didn't
+  carry the entitlements that scope binaries into a DP keychain
+  group, so every `SecItem*` call returned `errSecMissingEntitlement`.
+  `scripts/sign-macos.sh` now embeds `application-identifier` and
+  `keychain-access-groups = ["TEAMID.bwx"]` on the
+  hardened-runtime path (Team ID extracted from the identity string,
+  override with `TEAM_ID=…`). At runtime `src/touchid/keychain.rs`
+  checks its own `application-identifier` entitlement via
+  `SecTaskCopyValueForEntitlement` and only requests the DP keychain
+  when present; cargo-install, ad-hoc, `Apple Development`, and
+  unsigned local builds transparently fall back to the legacy file
+  keychain (which works without entitlements).
+
 ## [2.3.0] - 2026-04-27
 
 * **Faster `--folder` lookup in `bwx add`/`generate`.** When passeing
