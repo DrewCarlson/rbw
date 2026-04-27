@@ -134,6 +134,69 @@ pub async fn encrypt(
     Ok(())
 }
 
+pub async fn encrypt_batch(
+    sock: &mut crate::sock::Sock,
+    state: std::sync::Arc<tokio::sync::Mutex<crate::state::State>>,
+    items: Vec<bwx::protocol::EncryptItem>,
+    session_id: Option<&str>,
+    purpose: Option<&str>,
+) -> bin_error::Result<()> {
+    if items.len() > BATCH_MAX_ITEMS {
+        sock.send(&bwx::protocol::Response::Error {
+            error: format!(
+                "encrypt batch too large ({} items, max {BATCH_MAX_ITEMS})",
+                items.len()
+            ),
+        })
+        .await?;
+        return Ok(());
+    }
+
+    enforce_touchid_gate(
+        state.clone(),
+        bwx::touchid::Kind::VaultSecret,
+        session_id,
+        purpose,
+    )
+    .await?;
+
+    let state = state.lock().await;
+    let mut results = Vec::with_capacity(items.len());
+    for item in items {
+        let Some(keys) = state.key(item.org_id.as_deref()) else {
+            results.push(bwx::protocol::EncryptItemResult::Err {
+                error: "failed to find encryption keys in in-memory state"
+                    .to_string(),
+            });
+            continue;
+        };
+        match bwx::cipherstring::CipherString::encrypt_symmetric(
+            keys,
+            item.plaintext.as_bytes(),
+        ) {
+            Ok(cs) => {
+                results.push(bwx::protocol::EncryptItemResult::Ok {
+                    cipherstring: cs.to_string(),
+                });
+            }
+            Err(e) => {
+                let wrapped = bin_error::Error::with_context(
+                    e,
+                    "failed to encrypt plaintext secret",
+                );
+                results.push(bwx::protocol::EncryptItemResult::Err {
+                    error: sanitize_batch_item_error(&wrapped),
+                });
+            }
+        }
+    }
+
+    sock.send(&bwx::protocol::Response::EncryptBatch { results })
+        .await?;
+
+    Ok(())
+}
+
 #[cfg(feature = "clipboard")]
 pub async fn clipboard_store(
     sock: &mut crate::sock::Sock,

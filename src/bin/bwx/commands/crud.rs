@@ -8,6 +8,63 @@ use super::util::{
 };
 use crate::bin_error::{self, ContextExt as _};
 
+/// Stages plaintexts into a single `EncryptBatch` IPC, then exposes
+/// per-index reads. Mirrors the decrypt-side `Batcher` in
+/// `commands::decrypt`; kept private to crud since that's the only
+/// call site that batch-encrypts today.
+struct EncryptBatcher {
+    items: Vec<bwx::protocol::EncryptItem>,
+    results: Vec<bin_error::Result<String>>,
+}
+
+impl EncryptBatcher {
+    fn new() -> Self {
+        Self {
+            items: Vec::new(),
+            results: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, plaintext: &str, org_id: Option<&str>) -> usize {
+        self.items.push(bwx::protocol::EncryptItem {
+            plaintext: plaintext.to_string(),
+            org_id: org_id.map(std::string::ToString::to_string),
+        });
+        self.items.len() - 1
+    }
+
+    fn push_opt(
+        &mut self,
+        plaintext: Option<&str>,
+        org_id: Option<&str>,
+    ) -> Option<usize> {
+        plaintext.map(|p| self.push(p, org_id))
+    }
+
+    fn run(&mut self) -> bin_error::Result<()> {
+        if !self.items.is_empty() {
+            let items = std::mem::take(&mut self.items);
+            self.results = crate::actions::encrypt_batch(items)?;
+        }
+        Ok(())
+    }
+
+    /// Read a slot whose encrypt failure should propagate as an error.
+    fn take(&self, idx: usize) -> bin_error::Result<String> {
+        match &self.results[idx] {
+            Ok(s) => Ok(s.clone()),
+            Err(e) => Err(crate::bin_error::Error::msg(e.to_string())),
+        }
+    }
+
+    fn take_opt(
+        &self,
+        idx: Option<usize>,
+    ) -> bin_error::Result<Option<String>> {
+        idx.map(|i| self.take(i)).transpose()
+    }
+}
+
 pub fn add(
     name: &str,
     username: Option<&str>,
@@ -22,27 +79,30 @@ pub fn add(
     let mut access_token = db.access_token.as_ref().unwrap().clone();
     let refresh_token = db.refresh_token.as_ref().unwrap();
 
-    let name = crate::actions::encrypt(name, None)?;
-
-    let username = username
-        .map(|username| crate::actions::encrypt(username, None))
-        .transpose()?;
-
     let contents = bwx::edit::edit("", HELP_PW)?;
-
     let (password, notes) = parse_editor(&contents);
-    let password = password
-        .map(|password| crate::actions::encrypt(&password, None))
-        .transpose()?;
-    let notes = notes
-        .map(|notes| crate::actions::encrypt(&notes, None))
-        .transpose()?;
-    let uris: Vec<_> = uris
+
+    let mut b = EncryptBatcher::new();
+    let name_idx = b.push(name, None);
+    let username_idx = b.push_opt(username, None);
+    let password_idx = b.push_opt(password.as_deref(), None);
+    let notes_idx = b.push_opt(notes.as_deref(), None);
+    let uri_idxs: Vec<(usize, Option<bwx::api::UriMatchType>)> = uris
         .iter()
-        .map(|uri| {
+        .map(|(uri, match_type)| (b.push(uri, None), *match_type))
+        .collect();
+    b.run()?;
+
+    let name = b.take(name_idx)?;
+    let username = b.take_opt(username_idx)?;
+    let password = b.take_opt(password_idx)?;
+    let notes = b.take_opt(notes_idx)?;
+    let uris: Vec<_> = uri_idxs
+        .into_iter()
+        .map(|(idx, match_type)| {
             Ok(bwx::db::Uri {
-                uri: crate::actions::encrypt(&uri.0, None)?,
-                match_type: uri.1,
+                uri: b.take(idx)?,
+                match_type,
             })
         })
         .collect::<bin_error::Result<_>>()?;
@@ -130,17 +190,25 @@ pub fn generate(
         let mut access_token = db.access_token.as_ref().unwrap().clone();
         let refresh_token = db.refresh_token.as_ref().unwrap();
 
-        let name = crate::actions::encrypt(name, None)?;
-        let username = username
-            .map(|username| crate::actions::encrypt(username, None))
-            .transpose()?;
-        let password = crate::actions::encrypt(password_str, None)?;
-        let uris: Vec<_> = uris
+        let mut b = EncryptBatcher::new();
+        let name_idx = b.push(name, None);
+        let username_idx = b.push_opt(username, None);
+        let password_idx = b.push(password_str, None);
+        let uri_idxs: Vec<(usize, Option<bwx::api::UriMatchType>)> = uris
             .iter()
-            .map(|uri| {
+            .map(|(uri, match_type)| (b.push(uri, None), *match_type))
+            .collect();
+        b.run()?;
+
+        let name = b.take(name_idx)?;
+        let username = b.take_opt(username_idx)?;
+        let password = b.take(password_idx)?;
+        let uris: Vec<_> = uri_idxs
+            .into_iter()
+            .map(|(idx, match_type)| {
                 Ok(bwx::db::Uri {
-                    uri: crate::actions::encrypt(&uri.0, None)?,
-                    match_type: uri.1,
+                    uri: b.take(idx)?,
+                    match_type,
                 })
             })
             .collect::<bin_error::Result<_>>()?;
@@ -237,21 +305,16 @@ pub fn edit(
             }
 
             let contents = bwx::edit::edit(&contents, HELP_PW)?;
-
             let (password, notes) = parse_editor(&contents);
-            let password = password
-                .map(|password| {
-                    crate::actions::encrypt(
-                        &password,
-                        entry.org_id.as_deref(),
-                    )
-                })
-                .transpose()?;
-            let notes = notes
-                .map(|notes| {
-                    crate::actions::encrypt(&notes, entry.org_id.as_deref())
-                })
-                .transpose()?;
+
+            let mut b = EncryptBatcher::new();
+            let password_idx =
+                b.push_opt(password.as_deref(), entry.org_id.as_deref());
+            let notes_idx =
+                b.push_opt(notes.as_deref(), entry.org_id.as_deref());
+            b.run()?;
+            let password = b.take_opt(password_idx)?;
+            let notes = b.take_opt(notes_idx)?;
             let mut history = entry.history.clone();
             let bwx::db::EntryData::Login {
                 username: entry_username,

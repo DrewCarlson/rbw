@@ -181,6 +181,35 @@ pub fn encrypt(
     }
 }
 
+pub fn encrypt_batch(
+    items: Vec<bwx::protocol::EncryptItem>,
+) -> bin_error::Result<Vec<bin_error::Result<String>>> {
+    let res = crate::sock::request(&build_request(
+        bwx::protocol::Action::EncryptBatch { items },
+    ))?;
+    match res {
+        bwx::protocol::Response::EncryptBatch { results } => Ok(results
+            .into_iter()
+            .map(|r| match r {
+                bwx::protocol::EncryptItemResult::Ok { cipherstring } => {
+                    Ok(cipherstring)
+                }
+                bwx::protocol::EncryptItemResult::Err { error } => {
+                    Err(bin_error::Error::msg(format!(
+                        "failed to encrypt: {error}"
+                    )))
+                }
+            })
+            .collect()),
+        bwx::protocol::Response::Error { error } => {
+            Err(bin_error::Error::msg(format!("failed to encrypt: {error}")))
+        }
+        _ => Err(bin_error::Error::msg(format!(
+            "unexpected message: {res:?}"
+        ))),
+    }
+}
+
 pub fn clipboard_store(text: &str) -> bin_error::Result<()> {
     simple_action(bwx::protocol::Action::ClipboardStore {
         text: text.to_string(),

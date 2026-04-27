@@ -229,6 +229,18 @@ async fn handle_request(
             .await?;
             true
         }
+        bwx::protocol::Action::EncryptBatch { items } => {
+            let items = items.clone();
+            crate::actions::encrypt_batch(
+                sock,
+                state.clone(),
+                items,
+                session_id.as_deref(),
+                purpose.as_deref(),
+            )
+            .await?;
+            true
+        }
         bwx::protocol::Action::ClipboardStore { text } => {
             crate::actions::clipboard_store(
                 sock,

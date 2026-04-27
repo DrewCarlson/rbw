@@ -213,6 +213,19 @@ pub enum DecryptItemResult {
     Err { error: String },
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct EncryptItem {
+    pub plaintext: String,
+    pub org_id: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[serde(tag = "outcome")]
+pub enum EncryptItemResult {
+    Ok { cipherstring: String },
+    Err { error: String },
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum Action {
@@ -236,6 +249,12 @@ pub enum Action {
     Encrypt {
         plaintext: String,
         org_id: Option<String>,
+    },
+    /// Encrypt many plaintexts in one IPC. Touch ID is gated once for the
+    /// whole batch; per-item failures are surfaced in `results` so the
+    /// caller can decide whether to fail loud or skip the bad item.
+    EncryptBatch {
+        items: Vec<EncryptItem>,
     },
     ClipboardStore {
         text: String,
@@ -267,6 +286,9 @@ pub enum Response {
     },
     Encrypt {
         cipherstring: String,
+    },
+    EncryptBatch {
+        results: Vec<EncryptItemResult>,
     },
     Version {
         version: u32,

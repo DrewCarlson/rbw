@@ -2,6 +2,17 @@
 
 ## [2.2.2] - Unreleased
 
+* **Faster `bwx add`/`generate`/`edit`.** New `EncryptBatch` IPC
+  (mirrors `DecryptBatch`): the agent encrypts a vector of
+  plaintexts in one shot and returns per-item results. `bwx add`
+  and `bwx generate` previously fired one IPC each for name,
+  username, password, notes, and every URI; `bwx edit` fired one
+  per modified field. All three now stage their plaintexts through
+  a local `EncryptBatcher` helper and flush a single round trip.
+  Minor protocol bump — the new variants are additive, so older
+  agents still work for any command that doesn't actually use
+  `EncryptBatch`, but `add`/`generate`/`edit` require both binaries
+  on this version.
 * **Faster full-detail decrypt for `bwx get --full`/`history`/`code`.**
   The full-cipher decrypt path (`decrypt_cipher` /
   `decrypt_cipher_using_search`) previously fired one IPC per
